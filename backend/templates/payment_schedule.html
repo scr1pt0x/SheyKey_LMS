@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>График платежей</h1>
+<p style="text-align:center">Сделка № {{ deal.id }}</p>
+
+<h2>Информация о сделке</h2>
+<div class="kv"><span class="label">Клиент:</span><span>{{ client.full_name }}</span></div>
+<div class="kv"><span class="label">Тип:</span><span>{{ deal.type.value | title }}</span></div>
+<div class="kv"><span class="label">Итоговая сумма:</span><span class="amount">{{ deal.total }} ₽</span></div>
+<div class="kv"><span class="label">Срок:</span><span>{{ deal.duration_months }} мес.</span></div>
+
+<h2>График</h2>
+<table>
+  <tr><th>№</th><th>Дата</th><th>Тип</th><th>К оплате</th><th>Оплачено</th><th>Остаток</th><th>Статус</th></tr>
+  {% for s in schedules %}
+  <tr>
+    <td>{{ s.installment_number }}</td>
+    <td>{{ s.due_date.strftime('%d.%m.%Y') }}</td>
+    <td>{{ s.installment_type }}</td>
+    <td>{{ s.amount }} ₽</td>
+    <td>{{ s.paid_amount }} ₽</td>
+    <td>{{ (s.amount - s.paid_amount) | round(2) }} ₽</td>
+    <td>{{ s.status.value }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.pyc
+*.pyo
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.venv/
+venv/
+env/
+.env
+!.env.example
+!.env.local.example
+
+# Keys — NEVER commit private keys
+backend/keys/
+*.pem
+*.key
+dump.rdb
+
+# Alembic
+backend/migrations/versions/*.py
+!backend/migrations/versions/__init__.py
+!backend/migrations/versions/001_initial.py
+
+# Node
+node_modules/
+.next/
+*.tsbuildinfo
+frontend/.env.local
+!frontend/.env.local.example
+
+# Logs
+*.log
+logs/
+
+# Migration raw/clean data and credentials
+migration/raw_data/
+migration/clean_data/
+migration/.env
+migration/service_account.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Docker
+.dockerignore

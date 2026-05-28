@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page { margin: 2cm; size: A4; }
+  body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 11pt; color: #1a1a1a; line-height: 1.5; }
+  h1 { font-size: 16pt; text-align: center; margin-bottom: 4pt; }
+  h2 { font-size: 13pt; border-bottom: 1px solid #333; padding-bottom: 4pt; margin-top: 16pt; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8pt; }
+  th { background: #1a3a5c; color: white; padding: 6pt; text-align: left; font-size: 10pt; }
+  td { padding: 5pt; border-bottom: 1px solid #ddd; font-size: 10pt; }
+  tr:nth-child(even) td { background: #f5f8fb; }
+  .footer { margin-top: 32pt; font-size: 9pt; color: #666; border-top: 1px solid #ccc; padding-top: 8pt; }
+  .kv { display: flex; gap: 8pt; margin: 2pt 0; }
+  .kv .label { font-weight: bold; min-width: 160pt; }
+  .amount { font-weight: bold; font-size: 13pt; }
+</style>
+</head>
+<body>
+{% block content %}{% endblock %}
+<div class="footer">
+  Документ сформирован автоматически системой Islamic Finance LMS.
+  Дата: {{ now.strftime('%d.%m.%Y %H:%M') if now is defined else '' }}
+</div>
+</body>
+</html>

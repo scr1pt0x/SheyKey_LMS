@@ -1,0 +1,100 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import api from "@/lib/axios";
+
+export interface ScheduleItem {
+  id: string;
+  installment_number: number;
+  due_date: string;
+  amount: string;
+  paid_amount: string;
+  status: "pending" | "paid" | "overdue" | "partial";
+  installment_type: string;
+}
+
+export interface Deal {
+  id: string;
+  client_id: string;
+  manager_id: string;
+  type: "murabaha" | "ijara";
+  status: "draft" | "pending" | "active" | "closed" | "overdue";
+  principal: string;
+  markup: string;
+  total: string;
+  duration_months: number;
+  start_date: string | null;
+  end_date: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_comment: string | null;
+  created_at: string;
+  updated_at: string;
+  payment_schedules: ScheduleItem[];
+}
+
+export interface DealListParams {
+  status?: string;
+  type?: string;
+  manager_id?: string;
+  client_id?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function useDeals(params: DealListParams = {}) {
+  return useQuery({
+    queryKey: ["deals", params],
+    queryFn: async () => {
+      const { data } = await api.get("/api/deals", { params });
+      return data as { items: Deal[]; total: number; limit: number; offset: number };
+    },
+  });
+}
+
+export function useDeal(id: string) {
+  return useQuery({
+    queryKey: ["deals", id],
+    queryFn: async () => {
+      const { data } = await api.get(`/api/deals/${id}`);
+      return data as Deal;
+    },
+    enabled: !!id,
+  });
+}
+
+export function useCreateDeal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: unknown) => {
+      const { data } = await api.post("/api/deals", body);
+      return data as Deal;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deals"] }),
+  });
+}
+
+export function useSubmitDeal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await api.post(`/api/deals/${id}/submit`);
+      return data;
+    },
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: ["deals", id] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
+    },
+  });
+}
+
+export function useRequestRestructure() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ dealId, reason }: { dealId: string; reason: string }) => {
+      const { data } = await api.post(`/api/deals/${dealId}/restructure`, { reason });
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deals"] }),
+  });
+}

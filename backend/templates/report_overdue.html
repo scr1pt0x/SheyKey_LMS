@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Отчёт: Просрочки</h1>
+<p style="text-align:center">Сформирован: {{ generated_at.strftime('%d.%m.%Y %H:%M') }}</p>
+
+<h2>Активные дела по просрочкам</h2>
+<table>
+  <tr><th>Клиент</th><th>Тип сделки</th><th>Долг</th><th>Дней просрочки</th><th>Статус дела</th></tr>
+  {% for row in cases %}
+  <tr>
+    <td>{{ row.client.full_name }}</td>
+    <td>{{ row.deal.type.value }}</td>
+    <td>{{ row.case.total_debt }} ₽</td>
+    <td>{{ row.case.days_overdue }}</td>
+    <td>{{ row.case.status.value }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Договор Мурабаха</h1>
+<p style="text-align:center">№ {{ deal.id }} от {{ deal.created_at.strftime('%d.%m.%Y') }}</p>
+
+<h2>Стороны договора</h2>
+<div class="kv"><span class="label">Клиент:</span><span>{{ client.full_name }}</span></div>
+<div class="kv"><span class="label">Телефон:</span><span>{{ client.phone }}</span></div>
+<div class="kv"><span class="label">Паспорт:</span><span>{{ client.passport or '—' }}</span></div>
+
+<h2>Условия сделки</h2>
+<div class="kv"><span class="label">Тип сделки:</span><span>Мурабаха (Murabaha)</span></div>
+<div class="kv"><span class="label">Стоимость товара:</span><span>{{ deal.principal }} ₽</span></div>
+<div class="kv"><span class="label">Наценка банка:</span><span>{{ deal.markup }} ₽</span></div>
+<div class="kv"><span class="label">Итоговая сумма к выплате:</span><span class="amount">{{ deal.total }} ₽</span></div>
+<div class="kv"><span class="label">Срок:</span><span>{{ deal.duration_months }} месяцев</span></div>
+<div class="kv"><span class="label">Дата начала:</span><span>{{ deal.start_date.strftime('%d.%m.%Y') if deal.start_date else '—' }}</span></div>
+
+<h2>График платежей</h2>
+<table>
+  <tr><th>№</th><th>Дата</th><th>Сумма</th></tr>
+  {% for s in schedules %}
+  <tr><td>{{ s.installment_number }}</td><td>{{ s.due_date.strftime('%d.%m.%Y') }}</td><td>{{ s.amount }} ₽</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Подписи сторон</h2>
+<table style="margin-top: 32pt">
+  <tr>
+    <td style="width:50%; border:none; padding:8pt">
+      <strong>Банк:</strong><br><br>
+      _____________________<br>
+      <small>Подпись / Печать</small>
+    </td>
+    <td style="width:50%; border:none; padding:8pt">
+      <strong>Клиент: {{ client.full_name }}</strong><br><br>
+      _____________________<br>
+      <small>Подпись</small>
+    </td>
+  </tr>
+</table>
+{% endblock %}

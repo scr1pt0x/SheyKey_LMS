@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Отчёт: Портфель</h1>
+<p style="text-align:center">Сформирован: {{ generated_at.strftime('%d.%m.%Y %H:%M') }}</p>
+
+<h2>Портфель по типам и статусам сделок</h2>
+<table>
+  <tr><th>Статус</th><th>Тип</th><th>Кол-во</th><th>Объём</th></tr>
+  {% for row in stats %}
+  <tr>
+    <td>{{ row.status.value if row.status else '—' }}</td>
+    <td>{{ row.type.value if row.type else '—' }}</td>
+    <td>{{ row.cnt }}</td>
+    <td>{{ row.total }} ₽</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
