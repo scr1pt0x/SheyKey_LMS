@@ -337,6 +337,7 @@ async def team_activity(
 ) -> list:
     """Actions per staff member over the last N days."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
+
     rows = await db.execute(
         select(
             AuditLog.user_id,
@@ -351,16 +352,31 @@ async def team_activity(
         .group_by(AuditLog.user_id, User.name, User.role)
         .order_by(func.count().desc())
     )
-    return [
-        {
+    results = rows.all()
+
+    # For each user, get the most frequent action type
+    items = []
+    for r in results:
+        top_action_result = await db.execute(
+            select(AuditLog.action, func.count().label("cnt"))
+            .where(AuditLog.user_id == r.user_id)
+            .where(AuditLog.created_at >= since)
+            .group_by(AuditLog.action)
+            .order_by(func.count().desc())
+            .limit(1)
+        )
+        top_action_row = top_action_result.first()
+        top_action = top_action_row[0] if top_action_row else None
+
+        items.append({
             "user_id": str(r.user_id),
             "name": r.name,
             "role": r.role.value,
             "action_count": r.action_count,
             "last_action": r.last_action.isoformat() if r.last_action else None,
-        }
-        for r in rows.all()
-    ]
+            "top_action": top_action,
+        })
+    return items
 
 
 @router.get("/analytics/conversion", response_model=ConversionFunnelResponse)
@@ -751,7 +767,10 @@ async def get_audit_log(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("director")),
 ) -> PaginatedResponse[AuditLogItem]:
-    query = select(AuditLog)
+    query = (
+        select(AuditLog, User.name.label("user_name"))
+        .outerjoin(User, AuditLog.user_id == User.id)
+    )
     if user_id:
         query = query.where(AuditLog.user_id == user_id)
     if entity:
@@ -763,16 +782,26 @@ async def get_audit_log(
     if date_to:
         query = query.where(AuditLog.created_at <= date_to)
 
-    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
-    rows = await db.execute(query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset))
-    entries = rows.scalars().all()
-
-    return PaginatedResponse(
-        items=[AuditLogItem.model_validate(e) for e in entries],
-        total=total,
-        limit=limit,
-        offset=offset,
+    count_query = select(func.count()).select_from(
+        select(AuditLog).where(
+            *([AuditLog.user_id == user_id] if user_id else []),
+            *([AuditLog.entity == entity] if entity else []),
+            *([AuditLog.action == action] if action else []),
+            *([AuditLog.created_at >= date_from] if date_from else []),
+            *([AuditLog.created_at <= date_to] if date_to else []),
+        ).subquery()
     )
+    total = (await db.execute(count_query)).scalar_one()
+
+    rows = await db.execute(query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset))
+
+    items = []
+    for log, user_name in rows.all():
+        item = AuditLogItem.model_validate(log)
+        item.user_name = user_name
+        items.append(item)
+
+    return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 # ─── Settings ────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import api from "@/lib/axios";
 import {
   useTopDebtors,
@@ -25,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 
 export default function AnalyticsPage() {
   const [activityDays, setActivityDays] = useState(30);
+  const router = useRouter();
 
   const { data: debtors } = useTopDebtors(15);
   const { data: sbPerformance } = useSbPerformance();
@@ -50,7 +52,7 @@ export default function AnalyticsPage() {
     queryKey: ["analytics", "team-activity", activityDays],
     queryFn: async () => {
       const { data } = await api.get("/api/director/analytics/team-activity", { params: { days: activityDays } });
-      return data as { user_id: string; name: string; role: string; action_count: number; last_action: string | null }[];
+      return data as { user_id: string; name: string; role: string; action_count: number; last_action: string | null; top_action: string | null }[];
     },
   });
 
@@ -240,10 +242,8 @@ export default function AnalyticsPage() {
                     <td className="py-2 pr-4 text-gray-500">
                       {u.role === "manager" ? "Менеджер" : u.role === "sb" ? "СБ" : "Руководитель"}
                     </td>
-                    <td className="py-2 pr-4">
-                      <span className="bg-[#1a3a5c] text-white text-xs px-2 py-0.5 rounded-full">
-                        {u.action_count}
-                      </span>
+                    <td className="py-2 pr-4 font-medium">
+                      {u.action_count} действий
                     </td>
                     <td className="py-2 text-xs text-gray-500">
                       {u.last_action ? new Date(u.last_action).toLocaleString("ru") : "—"}

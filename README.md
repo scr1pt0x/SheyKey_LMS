@@ -1,8 +1,8 @@
-# Islamic Finance LMS
+# SheyKey Islamic Finance LMS
 
-Внутренняя PWA-система для банка исламской рассрочки.  
+Внутренняя PWA-система для управления исламскими финансовыми сделками.  
 Роли: Менеджер · Служба Безопасности · Руководитель.  
-Типы сделок: Murabaha · Ijara · Musharaka.
+Типы сделок: Мурабаха · Иджара.
 
 ## Стек
 
@@ -11,7 +11,7 @@
 | Frontend | Next.js 14 · TypeScript · Tailwind · shadcn/ui · TanStack Query · Zustand · Recharts |
 | Backend | FastAPI · SQLAlchemy 2.0 async · PostgreSQL 16 · Redis 7 · Celery |
 | Хранилище | MinIO (S3-совместимый самохостинг) |
-| Уведомления | SMS.ru · Telegram Bot (Inferno Solution) · SMTP |
+| Уведомления | SMS.ru · Web Push · SMTP |
 | Документы | WeasyPrint · openpyxl |
 | Прод | Docker Compose · Nginx · reg.ru VPS · GitHub Actions |
 
@@ -19,59 +19,66 @@
 
 ### 1. Требования
 
-- Python 3.12
-- Node.js 20
-- PostgreSQL 16 (локально)
-- Redis 7 (локально)
-- MinIO (Docker: `docker run -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address ":9001"`)
+- Python 3.12 (`brew install python@3.12`)
+- Node.js 20 (`brew install node@20`)
+- PostgreSQL 16 (`brew install postgresql@16 && brew services start postgresql@16`)
+- Redis 7 (`brew install redis && redis-server --daemonize yes`)
+- MinIO (опционально, для загрузки файлов):
+  ```bash
+  docker run -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address ":9001"
+  ```
 
-### 2. Backend
+### 2. Первоначальная настройка
 
 ```bash
+# Скопировать и заполнить .env
 cp backend/.env.example backend/.env
-# Отредактируйте backend/.env
 
-make gen-keys          # Генерация RSA ключей для JWT
+# Сгенерировать RSA ключи для JWT (один раз)
+make gen-keys
+
+# Создать БД
+createdb lms_db
+createuser lms_user
+psql -c "ALTER USER lms_user WITH PASSWORD 'lms_pass';"
+psql -c "GRANT ALL PRIVILEGES ON DATABASE lms_db TO lms_user;"
+
+# Установить зависимости
 make install-backend
+make install-frontend
 
-# Создайте БД в PostgreSQL:
-# createdb lms_db && createuser lms_user
-
-make migrate           # Применить миграции
-make seed              # Создать директора + дефолтные настройки
-make dev-backend       # Запустить API на :8000
+# Применить миграции и создать начальные данные
+make migrate
+make seed
 ```
 
-### 3. Frontend
+### 3. Запуск
 
 ```bash
-cp frontend/.env.local.example frontend/.env.local
-make install-frontend
-make dev-frontend      # Запустить на :3000
+make dev          # Запускает бэкенд + фронтенд одной командой
 ```
 
-### 4. Celery (опционально для фоновых задач)
+Или по отдельности:
+```bash
+make dev-backend  # API на :8000
+make dev-frontend # Интерфейс на :3000
+```
 
+Фоновые задачи (SMS-напоминания, авторассылки — опционально):
 ```bash
 make dev-worker
 make dev-beat
 ```
 
-### 5. Telegram Bot (Inferno Solution — опционально для уведомлений)
+## Аккаунты после `make seed`
 
-```bash
-cp tg_bot/.env.example tg_bot/.env
-make install-bot
-make dev-bot           # HTTP сервер на :8080
-# В отдельном терминале:
-cd tg_bot && python main.py
-```
+| Роль | Телефон | Пароль |
+|---|---|---|
+| Руководитель | `+79000000001` | `Admin12345!` |
+| Менеджер | `+79000000002` | `Manager12345!` |
+| Служба Безопасности | `+79000000003` | `SB12345678!` |
 
-## Первый вход
-
-После `make seed` доступен аккаунт директора:
-- Телефон: `+79000000001`
-- Пароль: `Admin12345!`
+> Создать аккаунты менеджера и СБ можно через кабинет руководителя → Настройки → Сотрудники.
 
 ## Структура проекта
 
@@ -79,30 +86,41 @@ cd tg_bot && python main.py
 SheyKey_LMS/
 ├── backend/           FastAPI + SQLAlchemy + Celery
 ├── frontend/          Next.js 14 PWA
-├── tg_bot/            Telegram Bot (Inferno Solution)
 ├── infra/             Docker Compose (прод) + Nginx
-├── migration/         Скрипты миграции из Google Sheets
-└── .github/workflows/ CI/CD (reg.ru + Inferno Solution)
+├── migration/         Импорт из Google Sheets
+└── .github/workflows/ CI/CD на reg.ru VPS
 ```
 
 ## Тесты
 
 ```bash
-make test              # Unit тесты (calculators, state machines, auth)
-make test-all          # Все тесты
-make test-load         # Нагрузочное тестирование (locust)
+make test         # Unit тесты (калькуляторы, статус-машины, авторизация)
+make test-all     # Все тесты
 ```
+
+## Импорт данных из Google Sheets
+
+В кабинете руководителя есть раздел **«Импорт данных»** — скачай таблицу как `.xlsx` и загрузи через интерфейс. Либо воспользуйся скриптами:
+
+```bash
+make install-migration
+make migration-extract    # Выгрузить из Google Sheets
+make migration-transform  # Нормализовать
+make migration-load       # Загрузить в БД
+make migration-verify     # Проверить
+```
+
+Подробнее: [`migration/README.md`](migration/README.md)
 
 ## Продакшн (reg.ru)
 
-Требуются GitHub Secrets:
-- `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`
-- `INFERNO_HOST`, `INFERNO_USER`, `INFERNO_SSH_KEY`
+Добавь в GitHub → Settings → Secrets:
+- `VPS_HOST` — IP сервера
+- `VPS_USER` — логин (обычно `root`)
+- `VPS_SSH_KEY` — приватный SSH-ключ
 
-```bash
-git push origin main   # Запускает CI/CD
-```
+После этого `git push origin main` автоматически деплоит новую версию на сервер.
 
 ## Лицензия
 
-Закрытый внутренний проект.
+Закрытый внутренний проект. © SheyKey

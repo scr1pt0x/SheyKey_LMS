@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ru" suppressHydrationWarning>
       <head>
-        <title>Islamic Finance LMS</title>
+        <title>SheyKey LMS</title>
         <meta name="description" content="Система управления исламскими финансовыми сделками" />
         <meta name="theme-color" content="#1a3a5c" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />

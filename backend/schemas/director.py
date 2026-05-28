@@ -76,6 +76,7 @@ class AuditLogItem(BaseModel):
 
     id: int
     user_id: uuid.UUID | None
+    user_name: str | None = None
     action: str
     entity: str
     entity_id: uuid.UUID | None

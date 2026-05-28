@@ -80,8 +80,13 @@ export default function SbDashboardPage() {
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-            <Tooltip />
-            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+            <Tooltip
+              formatter={(value: number) => [`${value} дел`, ""]}
+              labelStyle={{ fontWeight: 600 }}
+              contentStyle={{ borderRadius: "8px", fontSize: "13px" }}
+              cursor={{ fill: "rgba(0,0,0,0.05)" }}
+            />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Дел">
               {caseChartData.map((entry, index) => (
                 <rect key={index} fill={entry.fill} />
               ))}
