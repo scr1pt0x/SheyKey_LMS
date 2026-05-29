@@ -11,7 +11,13 @@ import {
   useMarkAllRead,
 } from "@/hooks/useNotifications";
 
-export function NotificationBell({ direction = "down" }: { direction?: "up" | "down" }) {
+export function NotificationBell({
+  direction = "down",
+  side = "right",
+}: {
+  direction?: "up" | "down";
+  side?: "left" | "right";
+}) {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -66,8 +72,10 @@ export function NotificationBell({ direction = "down" }: { direction?: "up" | "d
       </button>
 
       {open && (
-        <div className={`absolute right-0 w-80 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden ${
+        <div className={`absolute w-80 bg-white rounded-xl shadow-2xl border z-50 overflow-hidden ${
           direction === "up" ? "bottom-full mb-2" : "top-full mt-2"
+        } ${
+          side === "right" ? "left-0" : "right-0"
         }`}>
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">

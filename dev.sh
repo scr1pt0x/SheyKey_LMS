@@ -8,6 +8,21 @@ export PYTHONPATH="$ROOT"
 # Activate venv if it exists
 [ -f "$ROOT/.venv/bin/activate" ] && source "$ROOT/.venv/bin/activate"
 
+# Start PostgreSQL if not running
+export PATH="/opt/homebrew/opt/postgresql@16/bin:/opt/homebrew/opt/python@3.12/bin:/opt/homebrew/opt/node@20/bin:$PATH"
+if ! pg_isready -q 2>/dev/null; then
+  echo "→ Запуск PostgreSQL..."
+  pg_ctl -D /opt/homebrew/var/postgresql@16 start -l /tmp/pg.log -w > /dev/null 2>&1
+  sleep 1
+fi
+
+# Start Redis if not running
+if ! redis-cli ping > /dev/null 2>&1; then
+  echo "→ Запуск Redis..."
+  /opt/homebrew/bin/redis-server --daemonize yes --logfile /tmp/redis.log
+  sleep 1
+fi
+
 # Free ports
 for PORT in 8000 3000; do
   PID=$(lsof -ti :"$PORT" 2>/dev/null || true)

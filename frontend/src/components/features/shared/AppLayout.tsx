@@ -107,7 +107,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Bottom row: notifications + logout */}
         <div className="border-t border-white/10 p-3 flex items-center justify-between">
-          <NotificationBell direction="up" />
+          <NotificationBell direction="up" side="right" />
           <button
             onClick={() => doLogout()}
             className="flex items-center gap-2 px-3 py-2 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
