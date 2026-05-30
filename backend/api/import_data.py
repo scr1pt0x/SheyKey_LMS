@@ -23,7 +23,6 @@ from backend.core.database import get_db
 from backend.core.dependencies import require_role
 from backend.models.client import Client, KycStatus
 from backend.models.deal import Deal, DealStatus, DealType, DealParam
-from backend.models.overdue import OverdueCase
 from backend.models.payment import Payment, PaymentMethod, PaymentSchedule, PaymentStatus
 from backend.models.user import User, UserRole
 from backend.services.audit_service import AuditService
@@ -514,16 +513,9 @@ async def import_deals(
                         recorded_by=resolved_manager_id,
                     ))
 
-            # Create overdue case
             if final_status == DealStatus.overdue:
-                overdue_schedules = [s for j, s in enumerate(schedule_items) if j >= paid_count and s.due_date < today]
-                total_debt = sum(float(s.amount) for s in overdue_schedules)
-                earliest = min((s.due_date for s in overdue_schedules), default=today)
-                db.add(OverdueCase(
-                    deal_id=deal.id,
-                    total_debt=Decimal(str(total_debt)),
-                    days_overdue=(today - earliest).days,
-                ))
+                from backend.services.overdue_case_service import sync_overdue_case_for_deal
+                await sync_overdue_case_for_deal(db, deal.id)
 
             deals_imported += 1
 

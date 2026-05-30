@@ -18,10 +18,11 @@ import {
   DEAL_TYPE_LABELS,
 } from "@/lib/utils";
 import { toast } from "@/hooks/useToast";
-import { getErrorMessage } from "@/lib/axios";
+import { getErrorMessage, isForbidden } from "@/lib/axios";
 import { ArrowLeft, Archive, Phone, FileText, Plus, X, Tag } from "lucide-react";
 import { DocumentsSection } from "@/components/features/shared/DocumentsSection";
 import api from "@/lib/axios";
+import { SMS_TEMPLATES } from "@/lib/notificationTemplates";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 const TABS = ["Сделки", "Реструктуризации", "Уведомления", "Документы"] as const;
@@ -35,7 +36,7 @@ export default function ClientDetailPage() {
 
   const [newTag, setNewTag] = useState("");
 
-  const { data: client, isLoading, refetch } = useClient(id);
+  const { data: client, isLoading, isError, error, refetch } = useClient(id);
   const { data: dealsData } = useDeals({ client_id: id, limit: 100 });
   const updateKyc = useUpdateKyc(id);
   const archiveClient = useArchiveClient();
@@ -58,6 +59,9 @@ export default function ClientDetailPage() {
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-2 border-[#1a3a5c] border-t-transparent rounded-full" /></div>;
+  }
+  if (isError && isForbidden(error)) {
+    return <p className="text-center py-8 text-gray-600">Нет доступа к этому клиенту</p>;
   }
   if (!client) return <p className="text-center py-8 text-gray-500">Клиент не найден</p>;
 
@@ -88,6 +92,18 @@ export default function ClientDetailPage() {
       {showSmsForm && (
         <div className="bg-white rounded-xl border p-4 space-y-3">
           <label className="text-sm font-medium">Текст SMS клиенту</label>
+          <div className="flex flex-wrap gap-2">
+            {SMS_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="text-xs px-2 py-1 border rounded-lg hover:bg-gray-50"
+                onClick={() => setSmsMessage(t.text)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <textarea
             value={smsMessage}
             onChange={(e) => setSmsMessage(e.target.value)}

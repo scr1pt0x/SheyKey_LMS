@@ -21,6 +21,7 @@ from backend.models.profit_period import ProfitDistribution, ProfitPeriod, Profi
 from backend.models.settings import SettingKey, SystemSetting
 from backend.models.user import User
 from backend.services.audit_service import AuditService
+from backend.services.investor_share_service import recalculate_active_investor_shares
 
 router = APIRouter(prefix="/api/director/profit", tags=["profit"])
 
@@ -30,8 +31,7 @@ router = APIRouter(prefix="/api/director/profit", tags=["profit"])
 class InvestorCreate(BaseModel):
     name: str = Field(..., min_length=2)
     phone: str | None = None
-    share_pct: float = Field(..., gt=0, le=100)
-    investment_amount: float | None = None
+    investment_amount: float = Field(..., gt=0)
     joined_at: date | None = None
     notes: str | None = None
 
@@ -39,8 +39,7 @@ class InvestorCreate(BaseModel):
 class InvestorUpdate(BaseModel):
     name: str | None = None
     phone: str | None = None
-    share_pct: float | None = Field(None, gt=0, le=100)
-    investment_amount: float | None = None
+    investment_amount: float | None = Field(None, gt=0)
     joined_at: date | None = None
     notes: str | None = None
 
@@ -123,9 +122,6 @@ async def list_investors(
         query = query.where(Investor.is_active == True)  # noqa
     rows = await db.execute(query.order_by(Investor.joined_at.desc().nullslast(), Investor.created_at))
     investors = rows.scalars().all()
-
-    # Calculate total share to show remainder
-    total_share = sum(float(inv.share_pct) for inv in investors if inv.is_active)
     return [InvestorResponse.model_validate(inv) for inv in investors]
 
 
@@ -155,31 +151,21 @@ async def create_investor(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("director")),
 ) -> InvestorResponse:
-    # Validate total shares won't exceed 100%
-    current_total = (
-        await db.execute(
-            select(func.coalesce(func.sum(Investor.share_pct), 0))
-            .where(Investor.is_active == True)  # noqa
-        )
-    ).scalar_one()
-    if float(current_total) + body.share_pct > 100:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Сумма долей превысит 100%. Сейчас распределено: {float(current_total):.2f}%",
-        )
-
     investor = Investor(
         name=body.name,
         phone=body.phone,
-        share_pct=body.share_pct,
+        share_pct=0,
         investment_amount=body.investment_amount,
         joined_at=body.joined_at,
         notes=body.notes,
     )
     db.add(investor)
+    await db.flush()
+    await recalculate_active_investor_shares(db)
     await AuditService.log(
         db=db, user_id=str(current_user.id), action="CREATE",
-        entity="investors", new_val={"name": body.name, "share_pct": body.share_pct},
+        entity="investors",
+        new_val={"name": body.name, "investment_amount": body.investment_amount},
         ip=get_client_ip(request),
     )
     await db.commit()
@@ -199,22 +185,11 @@ async def update_investor(
     if not investor:
         raise HTTPException(status_code=404, detail="Инвестор не найден")
 
-    if body.share_pct is not None and body.share_pct != float(investor.share_pct):
-        current_total = (
-            await db.execute(
-                select(func.coalesce(func.sum(Investor.share_pct), 0))
-                .where(Investor.is_active == True)  # noqa
-                .where(Investor.id != investor_id)
-            )
-        ).scalar_one()
-        if float(current_total) + body.share_pct > 100:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Сумма долей превысит 100%. Остальные инвесторы уже занимают {float(current_total):.2f}%",
-            )
-
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(investor, field, value)
+
+    if body.investment_amount is not None or investor.is_active:
+        await recalculate_active_investor_shares(db)
 
     await AuditService.log(
         db=db, user_id=str(current_user.id), action="UPDATE",
@@ -254,6 +229,7 @@ async def deactivate_investor(
         )
 
     investor.is_active = False
+    await recalculate_active_investor_shares(db)
     await AuditService.log(
         db=db, user_id=str(current_user.id), action="DEACTIVATE",
         entity="investors", entity_id=str(investor_id),

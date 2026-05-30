@@ -21,6 +21,12 @@ class OverdueCaseResponse(BaseModel):
     days_overdue: int
     created_at: datetime
     updated_at: datetime
+    is_red_zone: bool | None = None
+    internal_notes: str | None = None
+
+
+class CaseNotesUpdate(BaseModel):
+    internal_notes: str | None = None
 
 
 class AssignCaseRequest(BaseModel):
@@ -97,3 +103,40 @@ class SbDashboardResponse(BaseModel):
     promises_this_week: int
     recovered_this_month: Decimal
     red_zone_cases: int
+    unassigned_cases_total: int = 0
+
+
+class SbTodayWorkItem(BaseModel):
+    case_id: uuid.UUID
+    deal_id: uuid.UUID
+    total_debt: Decimal
+    days_overdue: int
+    status: str
+    last_contact_at: datetime | None = None
+    promised_date: date | None = None
+    promised_amount: Decimal | None = None
+    promise_id: uuid.UUID | None = None
+
+
+class SbTodayWorkResponse(BaseModel):
+    red_zone_cases: list[SbTodayWorkItem]
+    promises_today: list[SbTodayWorkItem]
+    promises_overdue: list[SbTodayWorkItem]
+    unassigned_top: list[SbTodayWorkItem]
+
+
+class SbCaseContextResponse(BaseModel):
+    client_id: uuid.UUID
+    client_name: str
+    client_phone: str | None
+    deal_type: str
+    deal_status: str
+    deal_total: Decimal
+    next_schedule_due_date: date | None = None
+    next_schedule_amount: Decimal | None = None
+
+
+class SbStatsResponse(BaseModel):
+    cases_closed: int
+    promises_fulfilled_amount: Decimal
+    avg_days_overdue_closed: float | None = None

@@ -57,6 +57,10 @@
   button, [role="button"], a, input[type="submit"], input[type="button"] {
     @apply min-h-[44px];
   }
+  /* Native select chevron must not overlap label text */
+  select {
+    padding-inline-end: 2.25rem;
+  }
 }
 
 /* Scrollbar */

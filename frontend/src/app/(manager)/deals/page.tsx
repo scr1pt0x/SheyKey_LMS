@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useDeals } from "@/hooks/useDeals";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,15 @@ import { Plus } from "lucide-react";
 const LIMIT = 20;
 
 export default function DealsPage() {
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState("");
   const [type, setType] = useState("");
   const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    const s = searchParams.get("status");
+    if (s) setStatus(s);
+  }, [searchParams]);
 
   const { data, isLoading } = useDeals({
     status: status || undefined,

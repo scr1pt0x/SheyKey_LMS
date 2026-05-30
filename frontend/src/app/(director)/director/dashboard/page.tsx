@@ -51,8 +51,8 @@ export default function DirectorDashboardPage() {
       {/* Cash flow */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <CashCard label="Поступления сегодня" value={dashboard.cash_flow_today} />
-        <CashCard label="Поступления — 7 дней" value={dashboard.cash_flow_week} />
-        <CashCard label="Поступления за месяц" value={dashboard.cash_flow_month} />
+        <CashCard label="Поступления — 7 дней" subtitle="факт, за последние 7 дней" value={dashboard.cash_flow_week} />
+        <CashCard label="Поступления за месяц" subtitle="факт, с 1-го числа" value={dashboard.cash_flow_month} />
       </div>
 
       {/* Charts row */}
@@ -148,10 +148,19 @@ function KpiCard({
   );
 }
 
-function CashCard({ label, value }: { label: string; value: number | string }) {
+function CashCard({
+  label,
+  value,
+  subtitle,
+}: {
+  label: string;
+  value: number | string;
+  subtitle?: string;
+}) {
   return (
     <div className="bg-[#1a3a5c] rounded-xl p-4 text-white">
       <p className="text-xs text-white/70 mb-1">{label}</p>
+      {subtitle ? <p className="text-[10px] text-white/50 mb-1">{subtitle}</p> : null}
       <p className="text-xl font-bold">{formatCurrency(value)}</p>
     </div>
   );

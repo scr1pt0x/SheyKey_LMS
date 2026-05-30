@@ -6,11 +6,18 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.core.access import (
+    CLIENT_NOT_IN_PORTFOLIO,
+    list_manager_filter,
+    require_deal_access,
+)
 from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, get_current_user, require_role
+from backend.models.client import Client
 from backend.models.deal import Deal, DealParam, DealStatus, DealType
 from backend.models.payment import PaymentSchedule
 from backend.models.restructuring import Restructuring
+from backend.schemas.sb import RestructuringResponse
 from backend.models.user import User, UserRole
 from backend.schemas.common import PaginatedResponse
 from backend.schemas.deal import (
@@ -67,8 +74,9 @@ async def list_deals(
         query = query.where(Deal.status == status_filter)
     if type_filter:
         query = query.where(Deal.type == type_filter)
-    if manager_id:
-        query = query.where(Deal.manager_id == manager_id)
+    effective_manager_id = list_manager_filter(current_user, manager_id)
+    if effective_manager_id:
+        query = query.where(Deal.manager_id == effective_manager_id)
     if client_id:
         query = query.where(Deal.client_id == client_id)
     if date_from:
@@ -96,6 +104,15 @@ async def create_deal(
     current_user: User = Depends(require_role("manager", "director")),
 ) -> DealResponse:
     from decimal import Decimal
+
+    client = await db.get(Client, body.client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Клиент не найден")
+    if current_user.role == UserRole.manager and client.manager_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=CLIENT_NOT_IN_PORTFOLIO,
+        )
 
     if body.type == DealType.murabaha and body.murabaha:
         p = body.murabaha
@@ -182,6 +199,7 @@ async def get_deal(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
+    require_deal_access(deal, current_user)
     return _build_deal_response(deal)
 
 
@@ -201,6 +219,7 @@ async def update_deal(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
+    require_deal_access(deal, current_user)
     if deal.status not in (DealStatus.draft, DealStatus.pending):
         raise HTTPException(
             status_code=400,
@@ -260,6 +279,7 @@ async def submit_deal(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
+    require_deal_access(deal, current_user)
     if deal.status != DealStatus.draft:
         raise HTTPException(status_code=400, detail="Только черновик можно отправить на согласование")
 
@@ -295,6 +315,26 @@ async def submit_deal(
     return _build_deal_response(deal)
 
 
+@router.get("/{deal_id}/restructurings", response_model=list[RestructuringResponse])
+async def list_deal_restructurings(
+    deal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("manager", "sb", "director")),
+) -> list[RestructuringResponse]:
+    result = await db.execute(select(Deal).where(Deal.id == deal_id))
+    deal = result.scalar_one_or_none()
+    if not deal:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    require_deal_access(deal, current_user)
+
+    rows = await db.execute(
+        select(Restructuring)
+        .where(Restructuring.deal_id == deal_id)
+        .order_by(Restructuring.created_at.desc())
+    )
+    return [RestructuringResponse.model_validate(r) for r in rows.scalars().all()]
+
+
 @router.post("/{deal_id}/restructure")
 async def request_restructure(
     deal_id: uuid.UUID,
@@ -307,6 +347,7 @@ async def request_restructure(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
+    require_deal_access(deal, current_user)
     if deal.status not in (DealStatus.active, DealStatus.overdue):
         raise HTTPException(
             status_code=400,

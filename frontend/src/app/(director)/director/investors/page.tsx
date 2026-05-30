@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useInvestors,
   useInvestorSummary,
@@ -19,7 +19,6 @@ import { Users, Plus, Pencil, X, TrendingUp } from "lucide-react";
 const EMPTY_FORM = {
   name: "",
   phone: "",
-  share_pct: "",
   investment_amount: "",
   joined_at: new Date().toISOString().slice(0, 10),
   notes: "",
@@ -37,6 +36,17 @@ export default function InvestorsPage() {
 
   const updateInvestor = useUpdateInvestor(editId ?? "");
 
+  const editingInvestor = investors?.find((i) => i.id === editId);
+
+  const previewSharePct = useMemo(() => {
+    const amount = parseFloat(form.investment_amount);
+    if (!amount || amount <= 0 || !summary) return null;
+    const baseTotal = summary.total_invested - (editingInvestor?.investment_amount ?? 0);
+    const newTotal = baseTotal + amount;
+    if (newTotal <= 0) return null;
+    return Math.round((amount / newTotal) * 10000) / 100;
+  }, [form.investment_amount, summary, editingInvestor]);
+
   function openCreate() {
     setEditId(null);
     setForm(EMPTY_FORM);
@@ -48,7 +58,6 @@ export default function InvestorsPage() {
     setForm({
       name: inv.name,
       phone: inv.phone ?? "",
-      share_pct: String(inv.share_pct),
       investment_amount: inv.investment_amount ? String(inv.investment_amount) : "",
       joined_at: inv.joined_at ?? new Date().toISOString().slice(0, 10),
       notes: inv.notes ?? "",
@@ -57,16 +66,16 @@ export default function InvestorsPage() {
   }
 
   function handleSubmit() {
-    const raw = {
-      name: form.name.trim(),
-      phone: form.phone.trim() || null,
-      share_pct: parseFloat(form.share_pct),
-      investment_amount: form.investment_amount ? parseFloat(form.investment_amount) : null,
-      joined_at: form.joined_at || null,
-      notes: form.notes.trim() || null,
-    };
+    const investmentAmount = parseFloat(form.investment_amount);
 
     if (editId) {
+      const raw = {
+        name: form.name.trim(),
+        phone: form.phone.trim() || null,
+        investment_amount: Number.isFinite(investmentAmount) ? investmentAmount : undefined,
+        joined_at: form.joined_at || null,
+        notes: form.notes.trim() || null,
+      };
       const parsed = investorUpdateSchema.safeParse(raw);
       if (!parsed.success) {
         toast({ title: "Проверьте форму", description: parsed.error.errors[0]?.message, variant: "destructive" });
@@ -77,6 +86,13 @@ export default function InvestorsPage() {
         onError: (err) => toast({ title: "Ошибка", description: getErrorMessage(err), variant: "destructive" }),
       });
     } else {
+      const raw = {
+        name: form.name.trim(),
+        phone: form.phone.trim() || null,
+        investment_amount: investmentAmount,
+        joined_at: form.joined_at || null,
+        notes: form.notes.trim() || null,
+      };
       const parsed = investorCreateSchema.safeParse(raw);
       if (!parsed.success) {
         toast({ title: "Проверьте форму", description: parsed.error.errors[0]?.message, variant: "destructive" });
@@ -104,11 +120,10 @@ export default function InvestorsPage() {
         </Button>
       </div>
 
-      {/* Summary bar */}
       {summary && (
         <div className="bg-white rounded-xl border p-5 space-y-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Распределено долей</span>
+            <span className="text-gray-600">Распределено долей (авто)</span>
             <span className="font-bold text-lg">{totalShare}%</span>
           </div>
           <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
@@ -130,10 +145,12 @@ export default function InvestorsPage() {
         </div>
       )}
 
-      {/* Form */}
       {showForm && (
         <div className="bg-white rounded-xl border p-5 space-y-4">
           <h2 className="font-semibold">{editId ? "Редактировать инвестора" : "Новый инвестор"}</h2>
+          <p className="text-sm text-gray-500">
+            Доля в прибыли рассчитывается автоматически: вложение ÷ сумма всех вложений × 100%.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="ФИО *">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" placeholder="Алибек Жаксыбеков" />
@@ -141,11 +158,14 @@ export default function InvestorsPage() {
             <Field label="Телефон">
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input" placeholder="+79001234567" />
             </Field>
-            <Field label="Доля в прибыли (%) *">
-              <input type="number" step="0.01" min="0.01" max="100" value={form.share_pct} onChange={(e) => setForm({ ...form, share_pct: e.target.value })} className="input" placeholder="40" />
+            <Field label="Сумма вложения (₽) *">
+              <input type="number" step="1000" min="1" value={form.investment_amount} onChange={(e) => setForm({ ...form, investment_amount: e.target.value })} className="input" placeholder="2000000" />
             </Field>
-            <Field label="Сумма вложения (₽)">
-              <input type="number" step="1000" value={form.investment_amount} onChange={(e) => setForm({ ...form, investment_amount: e.target.value })} className="input" placeholder="2000000" />
+            <Field label="Доля (расчётная)">
+              <div className="input bg-gray-50 text-[#1a3a5c] font-semibold flex items-center gap-1">
+                <TrendingUp size={16} />
+                {previewSharePct != null ? `${previewSharePct}%` : "—"}
+              </div>
             </Field>
             <Field label="Дата входа">
               <input type="date" value={form.joined_at} onChange={(e) => setForm({ ...form, joined_at: e.target.value })} className="input" />
@@ -155,7 +175,7 @@ export default function InvestorsPage() {
             <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="input resize-none" />
           </Field>
           <div className="flex gap-3">
-            <Button size="sm" loading={createInvestor.isPending || updateInvestor.isPending} onClick={handleSubmit} disabled={!form.name || !form.share_pct}>
+            <Button size="sm" loading={createInvestor.isPending || updateInvestor.isPending} onClick={handleSubmit} disabled={!form.name || !form.investment_amount}>
               {editId ? "Сохранить" : "Добавить"}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowForm(false)}>Отмена</Button>
@@ -163,7 +183,6 @@ export default function InvestorsPage() {
         </div>
       )}
 
-      {/* Investor cards */}
       {isLoading ? (
         <div className="flex justify-center py-8"><div className="animate-spin h-8 w-8 border-2 border-[#1a3a5c] border-t-transparent rounded-full" /></div>
       ) : (
@@ -178,7 +197,7 @@ export default function InvestorsPage() {
                     <span className="flex items-center gap-1 text-[#1a3a5c] font-bold text-xl">
                       <TrendingUp size={18} />{inv.share_pct}%
                     </span>
-                    {inv.investment_amount && (
+                    {inv.investment_amount != null && (
                       <span className="text-sm text-gray-600">Вложено: <strong>{formatCurrency(inv.investment_amount)}</strong></span>
                     )}
                     {inv.joined_at && (

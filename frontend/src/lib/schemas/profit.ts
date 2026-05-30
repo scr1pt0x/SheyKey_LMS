@@ -11,17 +11,21 @@ export const expenseCategorySchema = z.enum([
 export const investorCreateSchema = z.object({
   name: z.string().min(2, "Минимум 2 символа"),
   phone: z.string().max(20).optional().nullable(),
-  share_pct: z
-    .number({ invalid_type_error: "Укажите долю в %" })
-    .gt(0, "Доля должна быть больше 0")
-    .max(100, "Доля не может превышать 100%"),
-  investment_amount: z.number().positive("Сумма должна быть положительной").optional().nullable(),
+  investment_amount: z
+    .number({ invalid_type_error: "Укажите сумму вложения" })
+    .positive("Сумма вложения должна быть больше 0"),
   joined_at: z.string().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
 });
 export type InvestorCreateForm = z.infer<typeof investorCreateSchema>;
 
-export const investorUpdateSchema = investorCreateSchema.partial();
+export const investorUpdateSchema = z.object({
+  name: z.string().min(2).optional(),
+  phone: z.string().max(20).optional().nullable(),
+  investment_amount: z.number().positive("Сумма вложения должна быть больше 0").optional(),
+  joined_at: z.string().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
 export type InvestorUpdateForm = z.infer<typeof investorUpdateSchema>;
 
 export const expenseCreateSchema = z.object({

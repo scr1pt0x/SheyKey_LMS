@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   useOverdueCase,
+  useSbCaseContext,
   useContactLogs,
   useAddContactLog,
   usePaymentPromises,
   useAddPromise,
   useUpdateCaseStatus,
+  useUpdateCaseNotes,
 } from "@/hooks/useSb";
 import { DocumentsSection } from "@/components/features/shared/DocumentsSection";
 import { Button } from "@/components/ui/button";
@@ -18,14 +20,18 @@ import {
   formatDate,
   formatDateTime,
   formatCurrency,
+  formatPhone,
   OVERDUE_STATUS_LABELS,
   CONTACT_TYPE_LABELS,
+  DEAL_TYPE_LABELS,
+  DEAL_STATUS_LABELS,
 } from "@/lib/utils";
 import { toast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/axios";
 import { ArrowLeft, Phone, Calendar, MessageSquare, Send } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/axios";
+import { SMS_TEMPLATES } from "@/lib/notificationTemplates";
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-red-100 text-red-800",
@@ -55,8 +61,11 @@ export default function SbCaseDetailPage() {
 
   const [quickSmsText, setQuickSmsText] = useState("");
   const [showQuickSms, setShowQuickSms] = useState(false);
+  const [internalNotes, setInternalNotes] = useState("");
 
   const { data: overdueCase, isLoading } = useOverdueCase(id);
+  const { data: caseContext } = useSbCaseContext(id);
+  const updateNotes = useUpdateCaseNotes(id);
   const { data: contactLogs } = useContactLogs(id);
   const { data: promises } = usePaymentPromises(id);
   const addContact = useAddContactLog(id);
@@ -64,21 +73,10 @@ export default function SbCaseDetailPage() {
   const updateStatus = useUpdateCaseStatus();
   const qc = useQueryClient();
 
-  // Load deal + client info for SMS
-  const { data: dealInfo } = useQuery({
-    queryKey: ["deal-for-case", overdueCase?.deal_id],
-    queryFn: async () => {
-      if (!overdueCase?.deal_id) return null;
-      const { data } = await api.get(`/api/deals/${overdueCase.deal_id}`);
-      return data;
-    },
-    enabled: !!overdueCase?.deal_id,
-  });
-
   const sendQuickSms = useMutation({
     mutationFn: () =>
       api.post("/api/notifications/send", {
-        client_id: dealInfo?.client_id,
+        client_id: caseContext?.client_id,
         channel: "sms",
         message: quickSmsText,
       }),
@@ -102,14 +100,19 @@ export default function SbCaseDetailPage() {
   });
 
   const { data: caseRestructurings } = useQuery({
-    queryKey: ["restructurings-for-case", id],
+    queryKey: ["restructurings-for-case", overdueCase?.deal_id],
     queryFn: async () => {
-      const { data } = await api.get("/api/director/approval/restructurings");
-      return (data as { id: string; deal_id: string; status: string; reason: string; created_at: string; decision_comment: string | null }[])
-        .filter((r) => r.deal_id === overdueCase?.deal_id);
+      const { data } = await api.get(`/api/deals/${overdueCase!.deal_id}/restructurings`);
+      return data as { id: string; deal_id: string; status: string; reason: string; created_at: string; decision_comment: string | null }[];
     },
     enabled: !!overdueCase?.deal_id,
   });
+
+  useEffect(() => {
+    if (overdueCase?.internal_notes != null) {
+      setInternalNotes(overdueCase.internal_notes ?? "");
+    }
+  }, [overdueCase?.internal_notes]);
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-2 border-[#1a3a5c] border-t-transparent rounded-full" /></div>;
@@ -128,8 +131,8 @@ export default function SbCaseDetailPage() {
             {OVERDUE_STATUS_LABELS[overdueCase.status]}
           </Badge>
         </div>
-        <div className="flex gap-2">
-          {dealInfo?.client_id && (
+        <div className="flex gap-2 flex-wrap">
+          {caseContext?.client_id && (
             <Button size="sm" variant="outline" onClick={() => setShowQuickSms(!showQuickSms)}>
               <Send size={16} /> SMS клиенту
             </Button>
@@ -171,10 +174,77 @@ export default function SbCaseDetailPage() {
         </div>
       </div>
 
+      {caseContext && (
+        <div className="bg-white rounded-xl border p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-gray-500 text-xs mb-1">Клиент</p>
+            <Link href={`/clients/${caseContext.client_id}`} className="font-semibold text-[#1a3a5c] hover:underline">
+              {caseContext.client_name}
+            </Link>
+            {caseContext.client_phone && (
+              <p className="text-gray-600 mt-0.5">{formatPhone(caseContext.client_phone)}</p>
+            )}
+          </div>
+          <div>
+            <p className="text-gray-500 text-xs mb-1">Сделка</p>
+            <Link href={`/deals/${overdueCase.deal_id}`} className="font-semibold text-[#1a3a5c] hover:underline">
+              {DEAL_TYPE_LABELS[caseContext.deal_type]} · {formatCurrency(caseContext.deal_total)}
+            </Link>
+            <p className="text-gray-600 mt-0.5">{DEAL_STATUS_LABELS[caseContext.deal_status]}</p>
+            {caseContext.next_schedule_due_date && (
+              <p className="text-xs text-gray-500 mt-1">
+                След. платёж: {formatDate(caseContext.next_schedule_due_date)} —{" "}
+                {formatCurrency(caseContext.next_schedule_amount ?? 0)}
+              </p>
+            )}
+          </div>
+          <div className="sm:col-span-2">
+            <p className="text-gray-500 text-xs mb-1">Долг / просрочка</p>
+            <p className="font-bold text-red-600">
+              {formatCurrency(overdueCase.total_debt)} · {overdueCase.days_overdue} дн.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border p-4 space-y-2">
+        <label className="text-sm font-medium">Внутренние заметки (только СБ)</label>
+        <textarea
+          value={internalNotes}
+          onChange={(e) => setInternalNotes(e.target.value)}
+          rows={3}
+          className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          loading={updateNotes.isPending}
+          onClick={() =>
+            updateNotes.mutate(internalNotes.trim() || null, {
+              onSuccess: () => toast({ title: "Заметки сохранены" }),
+            })
+          }
+        >
+          Сохранить заметки
+        </Button>
+      </div>
+
       {/* Quick SMS */}
       {showQuickSms && (
         <div className="bg-white rounded-xl border p-4 space-y-3">
           <label className="text-sm font-medium">Быстрый SMS клиенту</label>
+          <div className="flex flex-wrap gap-2">
+            {SMS_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="text-xs px-2 py-1 border rounded-lg hover:bg-gray-50"
+                onClick={() => setQuickSmsText(t.text)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <textarea
             value={quickSmsText}
             onChange={(e) => setQuickSmsText(e.target.value)}

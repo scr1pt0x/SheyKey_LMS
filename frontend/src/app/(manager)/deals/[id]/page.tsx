@@ -16,14 +16,14 @@ import {
   PAYMENT_METHOD_LABELS,
 } from "@/lib/utils";
 import { toast } from "@/hooks/useToast";
-import { getErrorMessage } from "@/lib/axios";
+import { getErrorMessage, isForbidden } from "@/lib/axios";
 import { ArrowLeft, Download, CreditCard } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/axios";
 
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: deal, isLoading } = useDeal(id);
+  const { data: deal, isLoading, isError, error } = useDeal(id);
   const submitDeal = useSubmitDeal();
   const qc = useQueryClient();
   const [showPaymentForm, setShowPaymentForm] = useState(false);
@@ -50,6 +50,9 @@ export default function DealDetailPage() {
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><div className="animate-spin h-8 w-8 border-2 border-[#1a3a5c] border-t-transparent rounded-full" /></div>;
+  }
+  if (isError && isForbidden(error)) {
+    return <p className="text-center py-8 text-gray-600">Нет доступа к этой сделке</p>;
   }
   if (!deal) return <p className="text-center py-8">Сделка не найдена</p>;
 

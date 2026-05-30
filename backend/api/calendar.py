@@ -11,7 +11,7 @@ from backend.core.dependencies import get_client_ip, require_role
 from backend.models.calendar_task import CalendarTask, CalendarTaskStatus
 from backend.models.payment import PaymentSchedule, PaymentStatus
 from backend.models.deal import Deal, DealStatus
-from backend.models.user import User
+from backend.models.user import User, UserRole
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -53,20 +53,26 @@ class ScheduledPaymentItem(BaseModel):
     status: str
 
 
+def _apply_manager_scope(query, current_user: User):
+    if current_user.role == UserRole.manager:
+        return query.where(Deal.manager_id == current_user.id)
+    return query
+
+
 @router.get("/today")
 async def payments_today(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "director")),
 ) -> list[ScheduledPaymentItem]:
     today = datetime.now(timezone.utc).date()
-    rows = await db.execute(
+    query = (
         select(PaymentSchedule, Deal)
         .join(Deal, PaymentSchedule.deal_id == Deal.id)
         .where(PaymentSchedule.due_date == today)
         .where(PaymentSchedule.status == PaymentStatus.pending)
-        .where(Deal.manager_id == current_user.id)
         .where(Deal.status == DealStatus.active)
     )
+    rows = await db.execute(_apply_manager_scope(query, current_user))
     result = []
     for schedule, deal in rows.all():
         result.append(
@@ -92,16 +98,16 @@ async def payments_week(
     today = datetime.now(timezone.utc).date()
     week_end = today + timedelta(days=7)
 
-    rows = await db.execute(
+    query = (
         select(PaymentSchedule, Deal)
         .join(Deal, PaymentSchedule.deal_id == Deal.id)
         .where(PaymentSchedule.due_date >= today)
         .where(PaymentSchedule.due_date <= week_end)
         .where(PaymentSchedule.status == PaymentStatus.pending)
-        .where(Deal.manager_id == current_user.id)
         .where(Deal.status == DealStatus.active)
         .order_by(PaymentSchedule.due_date)
     )
+    rows = await db.execute(_apply_manager_scope(query, current_user))
     result = []
     for schedule, deal in rows.all():
         result.append(

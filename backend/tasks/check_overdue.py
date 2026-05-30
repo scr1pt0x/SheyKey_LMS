@@ -11,6 +11,7 @@ from sqlalchemy import select, update
 from backend.core.database import AsyncSessionLocal
 from backend.models.deal import Deal, DealStatus
 from backend.models.payment import PaymentSchedule, PaymentStatus
+from backend.services.overdue_case_service import sync_overdue_case_for_deal
 from backend.tasks.celery_app import celery_app
 
 
@@ -44,6 +45,7 @@ async def _check_overdue_payments() -> dict:
             .distinct()
         )
         overdue_deal_ids = [row[0] for row in overdue_deal_ids_result.all()]
+        synced_cases = 0
 
         if overdue_deal_ids:
             result = await db.execute(
@@ -55,10 +57,19 @@ async def _check_overdue_payments() -> dict:
                 deal.status = DealStatus.overdue
                 updated_deals += 1
 
+            for deal_id in overdue_deal_ids:
+                case, _ = await sync_overdue_case_for_deal(db, deal_id)
+                if case:
+                    synced_cases += 1
+
         await db.commit()
 
     logger.info(
         f"check_overdue: {updated_schedules} schedules marked overdue, "
         f"{updated_deals} deals marked overdue"
     )
-    return {"updated_schedules": updated_schedules, "updated_deals": updated_deals}
+    return {
+        "updated_schedules": updated_schedules,
+        "updated_deals": updated_deals,
+        "synced_cases": synced_cases if overdue_deal_ids else 0,
+    }

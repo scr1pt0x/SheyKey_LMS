@@ -7,6 +7,7 @@ import api from "@/lib/axios";
 import { useAuthStore } from "@/store/auth";
 import { cn, ROLE_LABELS } from "@/lib/utils";
 import { NotificationBell } from "./NotificationBell";
+import { GlobalSearch } from "./GlobalSearch";
 import {
   Users,
   FileText,
@@ -24,6 +25,9 @@ import {
   TrendingUp,
   Receipt,
   Users2,
+  UserCog,
+  User,
+  Search,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -43,6 +47,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/director/analytics",  label: "Аналитика",     icon: BarChart2,   roles: ["director"], primary: true },
   { href: "/director/sb-control",  label: "Контроль СБ",   icon: Shield,      roles: ["director"] },
   { href: "/director/team",       label: "Команда",       icon: Users,       roles: ["director"] },
+  { href: "/director/staff",      label: "Сотрудники",    icon: UserCog,     roles: ["director"] },
   { href: "/director/reports",    label: "Отчёты",        icon: FileText,    roles: ["director"] },
   { href: "/director/audit",      label: "Аудит",         icon: Shield,      roles: ["director"] },
   { href: "/director/settings",   label: "Настройки",     icon: Settings,    roles: ["director"] },
@@ -53,12 +58,16 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/clients",             label: "Клиенты",       icon: Users,       roles: ["director"] },
   { href: "/deals",               label: "Сделки",        icon: FileText,    roles: ["director"] },
   // Manager
+  { href: "/dashboard",           label: "Дашборд",       icon: Home,        roles: ["manager"], primary: true },
   { href: "/clients",             label: "Клиенты",       icon: Users,       roles: ["manager"], primary: true },
   { href: "/deals",               label: "Сделки",        icon: FileText,    roles: ["manager"], primary: true },
   { href: "/calendar",            label: "Календарь",     icon: Calendar,    roles: ["manager"], primary: true },
   // SB
   { href: "/sb/dashboard",        label: "Дашборд",       icon: Home,        roles: ["sb"], primary: true },
   { href: "/sb/cases",            label: "Просрочники",   icon: AlertTriangle, roles: ["sb"], primary: true },
+  { href: "/sb/stats",            label: "Моя работа",    icon: BarChart2,   roles: ["sb"] },
+  { href: "/sb/promises",         label: "Обещания",      icon: Calendar,    roles: ["sb"] },
+  { href: "/profile",             label: "Профиль",       icon: User,        roles: ["manager", "sb", "director"] },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -91,6 +100,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="font-bold text-lg">SheyKey LMS</p>
           <p className="text-xs text-white/60 mt-0.5">{ROLE_LABELS[user.role]}</p>
           <p className="text-sm font-medium mt-1">{user.name}</p>
+        </div>
+
+        <div className="px-3 pb-2">
+          <GlobalSearch />
         </div>
 
         <nav className="flex-1 py-4 overflow-y-auto">

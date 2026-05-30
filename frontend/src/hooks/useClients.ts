@@ -25,6 +25,7 @@ export interface ClientListParams {
   offset?: number;
 }
 
+/** Lists are scoped on the server: managers see only their portfolio. */
 export function useClients(params: ClientListParams = {}) {
   return useQuery({
     queryKey: ["clients", params],

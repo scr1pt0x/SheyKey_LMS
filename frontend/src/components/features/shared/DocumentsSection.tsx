@@ -118,7 +118,7 @@ export function DocumentsSection({ entityType, entityId, availableDocTypes }: Pr
           <select
             value={selectedDocType}
             onChange={(e) => setSelectedDocType(e.target.value)}
-            className="px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
+            className="pl-3 pr-9 py-2 min-w-[9rem] text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
           >
             {docTypes.map((t) => (
               <option key={t} value={t}>{DOC_TYPE_LABELS[t] ?? t}</option>

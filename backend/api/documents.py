@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.access import check_document_entity_access
 from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, require_role
 from backend.models.document import Document, DocumentEntityType, DocumentType
@@ -24,8 +25,12 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 @router.post("/presigned-url", response_model=PresignedUrlResponse)
 async def get_presigned_url(
     body: PresignedUrlRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "sb", "director")),
 ) -> PresignedUrlResponse:
+    await check_document_entity_access(
+        db, body.entity_type, body.entity_id, current_user
+    )
     try:
         upload_url, object_key = generate_presigned_put_url(
             entity_type=body.entity_type,
@@ -55,6 +60,10 @@ async def confirm_upload(
         doc_type = DocumentType(body.doc_type)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid doc_type: {body.doc_type}")
+
+    await check_document_entity_access(
+        db, body.entity_type, body.entity_id, current_user
+    )
 
     file_url = get_public_file_url(body.object_key)
 
@@ -102,6 +111,8 @@ async def list_documents(
         et = DocumentEntityType(entity_type)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid entity_type: {entity_type}")
+
+    await check_document_entity_access(db, entity_type, entity_id, current_user)
 
     total = (
         await db.execute(

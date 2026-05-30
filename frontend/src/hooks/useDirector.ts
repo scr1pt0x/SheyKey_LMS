@@ -52,6 +52,105 @@ export function useSbPerformance() {
   });
 }
 
+export interface SbStaffMember {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+export function useSbStaff() {
+  return useQuery({
+    queryKey: ["sb-staff"],
+    queryFn: async () => {
+      const { data } = await api.get("/api/director/users", {
+        params: { role: "sb", limit: 100 },
+      });
+      return (data.items as SbStaffMember[]).filter((u) => u.is_active);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export interface StaffUser {
+  id: string;
+  name: string;
+  phone: string | null;
+  role: "manager" | "sb" | "director";
+  is_active: boolean;
+  last_login: string | null;
+}
+
+export function useStaffUsers(role?: "manager" | "sb") {
+  return useQuery({
+    queryKey: ["staff-users", role ?? "all"],
+    queryFn: async () => {
+      const params: Record<string, unknown> = { limit: 100 };
+      if (role) params.role = role;
+      const { data } = await api.get("/api/director/users", { params });
+      const items = data.items as StaffUser[];
+      return items.filter((u) => u.role !== "director");
+    },
+  });
+}
+
+export function useCreateStaffUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: {
+      name: string;
+      phone: string;
+      role: "manager" | "sb";
+      password: string;
+    }) => {
+      const { data } = await api.post("/api/director/users", body);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["staff-users"] });
+      qc.invalidateQueries({ queryKey: ["sb-staff"] });
+      qc.invalidateQueries({ queryKey: ["director-team"] });
+    },
+  });
+}
+
+export function useUpdateStaffUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      ...body
+    }: {
+      userId: string;
+      name?: string;
+      phone?: string;
+      is_active?: boolean;
+    }) => {
+      const { data } = await api.patch(`/api/director/users/${userId}`, body);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["staff-users"] });
+      qc.invalidateQueries({ queryKey: ["sb-staff"] });
+      qc.invalidateQueries({ queryKey: ["director-team"] });
+    },
+  });
+}
+
+export function useDeactivateStaffUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { data } = await api.delete(`/api/director/users/${userId}`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["staff-users"] });
+      qc.invalidateQueries({ queryKey: ["sb-staff"] });
+      qc.invalidateQueries({ queryKey: ["director-team"] });
+    },
+  });
+}
+
 export function useConversionFunnel() {
   return useQuery({
     queryKey: ["analytics", "conversion"],

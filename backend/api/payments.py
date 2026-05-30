@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.access import load_deal_for_user
 from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, require_role
 from backend.models.payment import Payment, PaymentSchedule, PaymentStatus
@@ -26,6 +27,7 @@ async def record_payment(
     schedule = await db.get(PaymentSchedule, body.schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="Строка графика не найдена")
+    await load_deal_for_user(db, schedule.deal_id, current_user)
     if schedule.status == PaymentStatus.paid:
         raise HTTPException(status_code=400, detail="Платёж уже полностью оплачен")
 
@@ -80,6 +82,7 @@ async def get_deal_payments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "sb", "director")),
 ) -> PaginatedResponse[PaymentResponse]:
+    await load_deal_for_user(db, deal_id, current_user)
     total = (
         await db.execute(
             select(func.count()).where(Payment.deal_id == deal_id)
@@ -112,6 +115,7 @@ async def confirm_payment(
     payment = await db.get(Payment, payment_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Платёж не найден")
+    await load_deal_for_user(db, payment.deal_id, current_user)
     if payment.confirmed_by:
         raise HTTPException(status_code=400, detail="Платёж уже подтверждён")
 
@@ -139,6 +143,7 @@ async def attach_receipt(
     payment = await db.get(Payment, payment_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Платёж не найден")
+    await load_deal_for_user(db, payment.deal_id, current_user)
 
     receipt_url = body.get("receipt_url")
     if not receipt_url:

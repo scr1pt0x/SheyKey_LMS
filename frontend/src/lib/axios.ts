@@ -65,6 +65,10 @@ api.interceptors.response.use(
 
 export default api;
 
+export function isForbidden(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 403;
+}
+
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;

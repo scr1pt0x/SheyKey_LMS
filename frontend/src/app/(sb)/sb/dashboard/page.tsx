@@ -1,7 +1,10 @@
 "use client";
 
-import { useSbDashboard } from "@/hooks/useSb";
-import { formatCurrency } from "@/lib/utils";
+import Link from "next/link";
+import { useSbDashboard, useSbTodayWork, useTakeCase, type SbTodayWorkItem } from "@/hooks/useSb";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/useToast";
 import {
   BarChart,
   Bar,
@@ -15,6 +18,8 @@ import { AlertTriangle, CheckCircle, Clock, TrendingUp } from "lucide-react";
 
 export default function SbDashboardPage() {
   const { data, isLoading } = useSbDashboard();
+  const { data: todayWork } = useSbTodayWork();
+  const takeCase = useTakeCase();
 
   if (isLoading) {
     return (
@@ -35,6 +40,20 @@ export default function SbDashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Мой дашборд — Служба Безопасности</h1>
+
+      {data.unassigned_cases_total > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between gap-3">
+          <p className="text-orange-800 font-medium text-sm">
+            В общей очереди: {data.unassigned_cases_total} неназначенных дел
+          </p>
+          <Link
+            href="/sb/cases?unassigned=1"
+            className="text-sm font-semibold text-[#1a3a5c] hover:underline shrink-0"
+          >
+            Перейти →
+          </Link>
+        </div>
+      )}
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -61,6 +80,55 @@ export default function SbDashboardPage() {
           value={formatCurrency(data.recovered_this_month)}
         />
       </div>
+
+      {todayWork && (
+        <div className="space-y-4">
+          <h2 className="font-semibold text-lg">Работа на сегодня</h2>
+          <WorkSection
+            title="Красная зона"
+            items={todayWork.red_zone_cases}
+            emptyText="Нет дел в красной зоне"
+            variant="red"
+          />
+          <WorkSection
+            title="Обещания на сегодня"
+            items={todayWork.promises_today}
+            emptyText="Нет обещаний на сегодня"
+          />
+          <WorkSection
+            title="Просроченные обещания"
+            items={todayWork.promises_overdue}
+            emptyText="Нет просроченных обещаний"
+            variant="red"
+          />
+          {todayWork.unassigned_top.length > 0 && (
+            <div className="bg-white rounded-xl border p-4">
+              <h3 className="font-medium text-sm mb-3">Неназначенные (очередь)</h3>
+              <ul className="space-y-2">
+                {todayWork.unassigned_top.map((item) => (
+                  <li key={item.case_id} className="flex items-center justify-between gap-2">
+                    <Link href={`/sb/cases/${item.case_id}`} className="text-sm hover:underline flex-1">
+                      Долг {formatCurrency(item.total_debt)} · {item.days_overdue} дн.
+                    </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={takeCase.isPending}
+                      onClick={() =>
+                        takeCase.mutate(item.case_id, {
+                          onSuccess: () => toast({ title: "Дело взято в работу" }),
+                        })
+                      }
+                    >
+                      Взять
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Red zone warning */}
       {data.red_zone_cases > 0 && (
@@ -106,6 +174,52 @@ export default function SbDashboardPage() {
           <p className="text-3xl font-bold text-[#1a3a5c]">{data.promises_this_week}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function WorkSection({
+  title,
+  items,
+  emptyText,
+  variant,
+}: {
+  title: string;
+  items: SbTodayWorkItem[];
+  emptyText: string;
+  variant?: "red";
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border p-4">
+        <h3 className="font-medium text-sm mb-1">{title}</h3>
+        <p className="text-sm text-gray-500">{emptyText}</p>
+      </div>
+    );
+  }
+  return (
+    <div className={`rounded-xl border p-4 ${variant === "red" ? "bg-red-50 border-red-200" : "bg-white"}`}>
+      <h3 className="font-medium text-sm mb-3">{title}</h3>
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <li key={item.case_id + (item.promise_id ?? "")}>
+            <Link href={`/sb/cases/${item.case_id}`} className="block hover:bg-black/5 rounded-lg p-2 -mx-2">
+              <div className="flex justify-between text-sm">
+                <span className="font-medium text-red-600">{formatCurrency(item.total_debt)}</span>
+                <span className="text-gray-500">{item.days_overdue} дн.</span>
+              </div>
+              {item.promised_date && (
+                <p className="text-xs text-gray-600 mt-0.5">
+                  Обещание: {item.promised_date} — {formatCurrency(item.promised_amount ?? 0)}
+                </p>
+              )}
+              {item.last_contact_at && (
+                <p className="text-xs text-gray-400">Контакт: {formatDateTime(item.last_contact_at)}</p>
+              )}
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

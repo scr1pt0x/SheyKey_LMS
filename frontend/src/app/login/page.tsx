@@ -10,7 +10,7 @@ import { useAuthStore } from "@/store/auth";
 import type { UserRole } from "@/store/auth";
 
 const ROLE_HOME: Record<UserRole, string> = {
-  manager: "/clients",
+  manager: "/dashboard",
   sb: "/sb/dashboard",
   director: "/director/dashboard",
 };

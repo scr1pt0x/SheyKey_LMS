@@ -42,6 +42,7 @@ export interface DealListParams {
   offset?: number;
 }
 
+/** Lists are scoped on the server: managers see only their portfolio. */
 export function useDeals(params: DealListParams = {}) {
   return useQuery({
     queryKey: ["deals", params],

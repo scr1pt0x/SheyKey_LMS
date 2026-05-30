@@ -47,6 +47,8 @@ from backend.api.import_data import router as import_router
 from backend.api.profit import router as profit_router
 from backend.api.payments import router as payments_router
 from backend.api.sb import router as sb_router
+from backend.api.manager import router as manager_router
+from backend.api.search import router as search_router
 
 app.include_router(auth_router)
 app.include_router(clients_router)
@@ -60,6 +62,8 @@ app.include_router(director_router)
 app.include_router(notifications_router)
 app.include_router(import_router)
 app.include_router(profit_router)
+app.include_router(manager_router)
+app.include_router(search_router)
 
 
 @app.get("/api/health")

@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import api from "@/lib/axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDateTime, OVERDUE_STATUS_LABELS } from "@/lib/utils";
-import { useSbPerformance } from "@/hooks/useDirector";
-import { AlertTriangle, Shield } from "lucide-react";
+import { useSbPerformance, useSbStaff } from "@/hooks/useDirector";
+import { useAssignCase } from "@/hooks/useSb";
+import { toast } from "@/hooks/useToast";
+import { getErrorMessage } from "@/lib/axios";
+import { AlertTriangle, RefreshCw, Shield } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-red-100 text-red-800",
@@ -35,6 +38,26 @@ interface CaseRow {
 export default function SbControlPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [offset, setOffset] = useState(0);
+  const qc = useQueryClient();
+
+  const syncCases = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post("/api/director/sync-overdue-cases");
+      return data as { synced_cases: number; created_cases: number; detail: string };
+    },
+    onSuccess: (result) => {
+      toast({
+        title: result.detail,
+        description: `Синхронизировано: ${result.synced_cases}, создано новых: ${result.created_cases}`,
+      });
+      qc.invalidateQueries({ queryKey: ["sb-control"] });
+      qc.invalidateQueries({ queryKey: ["sb-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["sb-cases"] });
+    },
+    onError: (err) => {
+      toast({ title: "Ошибка синхронизации", description: getErrorMessage(err), variant: "destructive" });
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["sb-control", statusFilter, offset],
@@ -47,12 +70,39 @@ export default function SbControlPage() {
   });
 
   const { data: performance } = useSbPerformance();
+  const { data: sbStaff = [] } = useSbStaff();
+  const assignCase = useAssignCase();
+
+  const handleAssign = (caseId: string, sbUserId: string) => {
+    if (!sbUserId) return;
+    assignCase.mutate(
+      { caseId, sb_user_id: sbUserId },
+      {
+        onSuccess: () => {
+          toast({ title: "Сотрудник СБ назначен" });
+          qc.invalidateQueries({ queryKey: ["sb-control"] });
+        },
+        onError: (err) =>
+          toast({ title: "Ошибка", description: getErrorMessage(err), variant: "destructive" }),
+      }
+    );
+  };
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2">
-        <Shield size={22} className="text-[#1a3a5c]" />
-        <h1 className="text-xl font-bold">Контроль Службы Безопасности</h1>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Shield size={22} className="text-[#1a3a5c]" />
+          <h1 className="text-xl font-bold">Контроль Службы Безопасности</h1>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          loading={syncCases.isPending}
+          onClick={() => syncCases.mutate()}
+        >
+          <RefreshCw size={16} /> Обновить дела СБ
+        </Button>
       </div>
 
       {/* SB performance summary */}
@@ -122,7 +172,16 @@ export default function SbControlPage() {
                     )}
                   </div>
                   <p className="text-lg font-bold text-red-600 mt-0.5">{formatCurrency(c.total_debt)}</p>
-                  <p className="text-xs text-gray-500">{c.days_overdue} дн. · {c.sb_name}</p>
+                  <p className="text-xs text-gray-500">{c.days_overdue} дн.</p>
+                  <div className="mt-2" onClick={(e) => e.preventDefault()}>
+                    <SbAssignSelect
+                      caseId={c.id}
+                      currentSbUserId={c.sb_user_id}
+                      staff={sbStaff}
+                      disabled={assignCase.isPending}
+                      onAssign={handleAssign}
+                    />
+                  </div>
                   <p className="text-xs text-gray-400">
                     Последний контакт: {c.last_contact ? formatDateTime(c.last_contact) : "не было"}
                   </p>
@@ -157,7 +216,15 @@ export default function SbControlPage() {
                     </td>
                     <td className="px-4 py-3 font-semibold text-red-600">{formatCurrency(c.total_debt)}</td>
                     <td className="px-4 py-3 font-medium">{c.days_overdue}</td>
-                    <td className="px-4 py-3">{c.sb_name}</td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <SbAssignSelect
+                        caseId={c.id}
+                        currentSbUserId={c.sb_user_id}
+                        staff={sbStaff}
+                        disabled={assignCase.isPending}
+                        onAssign={handleAssign}
+                      />
+                    </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {c.last_contact ? formatDateTime(c.last_contact) : <span className="text-red-500">Не было</span>}
                     </td>
@@ -193,5 +260,45 @@ export default function SbControlPage() {
         </>
       )}
     </div>
+  );
+}
+
+function SbAssignSelect({
+  caseId,
+  currentSbUserId,
+  staff,
+  disabled,
+  onAssign,
+}: {
+  caseId: string;
+  currentSbUserId: string | null;
+  staff: { id: string; name: string }[];
+  disabled?: boolean;
+  onAssign: (caseId: string, sbUserId: string) => void;
+}) {
+  if (staff.length === 0) {
+    return (
+      <span className="text-xs text-gray-500">
+        {currentSbUserId ? "Назначен" : "Нет сотрудников СБ"}
+      </span>
+    );
+  }
+
+  return (
+    <select
+      value={currentSbUserId ?? ""}
+      disabled={disabled}
+      onChange={(e) => onAssign(caseId, e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      className="max-w-[11rem] w-full px-2 py-1.5 text-xs border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
+      aria-label="Назначить сотрудника СБ"
+    >
+      {!currentSbUserId && <option value="">Не назначен</option>}
+      {staff.map((u) => (
+        <option key={u.id} value={u.id}>
+          {u.name}
+        </option>
+      ))}
+    </select>
   );
 }

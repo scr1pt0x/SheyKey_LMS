@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.access import list_manager_filter, load_client_for_user
 from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, get_current_user, require_role
 from backend.models.client import Client, KycStatus
@@ -47,8 +48,9 @@ async def list_clients(
         )
     if kyc_status:
         query = query.where(Client.kyc_status == kyc_status)
-    if manager_id:
-        query = query.where(Client.manager_id == manager_id)
+    effective_manager_id = list_manager_filter(current_user, manager_id)
+    if effective_manager_id:
+        query = query.where(Client.manager_id == effective_manager_id)
 
     query = query.where(Client.is_archived == is_archived)
 
@@ -106,10 +108,7 @@ async def get_client(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "sb", "director")),
 ) -> ClientResponse:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Клиент не найден")
+    client = await load_client_for_user(db, client_id, current_user)
     return ClientResponse.model_validate(client)
 
 
@@ -121,10 +120,7 @@ async def update_client(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "director")),
 ) -> ClientResponse:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Клиент не найден")
+    client = await load_client_for_user(db, client_id, current_user)
 
     old_val = {
         "full_name": client.full_name,
@@ -159,10 +155,7 @@ async def archive_client(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "director")),
 ) -> ClientResponse:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Клиент не найден")
+    client = await load_client_for_user(db, client_id, current_user)
 
     client.is_archived = True
     await AuditService.log(
@@ -186,10 +179,7 @@ async def update_kyc(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "director")),
 ) -> ClientResponse:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Клиент не найден")
+    client = await load_client_for_user(db, client_id, current_user)
 
     old_status = client.kyc_status
     client.kyc_status = body.kyc_status
@@ -217,10 +207,7 @@ async def add_note(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "director")),
 ) -> dict:
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise HTTPException(status_code=404, detail="Клиент не найден")
+    client = await load_client_for_user(db, client_id, current_user)
 
     from datetime import datetime, timezone
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
@@ -250,9 +237,7 @@ async def get_client_notifications(
 ) -> PaginatedResponse:
     from backend.schemas.notification import NotificationLogResponse
 
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Клиент не найден")
+    await load_client_for_user(db, client_id, current_user)
 
     total_q = await db.execute(
         select(func.count()).where(NotificationLog.client_id == client_id)

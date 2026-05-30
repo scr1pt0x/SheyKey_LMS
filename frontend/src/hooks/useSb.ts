@@ -12,6 +12,31 @@ export interface OverdueCase {
   days_overdue: number;
   created_at: string;
   updated_at: string;
+  is_red_zone?: boolean;
+  internal_notes?: string | null;
+}
+
+export interface SbTodayWorkItem {
+  case_id: string;
+  deal_id: string;
+  total_debt: string | number;
+  days_overdue: number;
+  status: string;
+  last_contact_at?: string | null;
+  promised_date?: string | null;
+  promised_amount?: string | number | null;
+  promise_id?: string | null;
+}
+
+export interface SbCaseContext {
+  client_id: string;
+  client_name: string;
+  client_phone: string | null;
+  deal_type: string;
+  deal_status: string;
+  deal_total: string | number;
+  next_schedule_due_date: string | null;
+  next_schedule_amount: string | number | null;
 }
 
 export interface ContactLog {
@@ -43,6 +68,7 @@ export interface SbDashboard {
   promises_this_week: number;
   recovered_this_month: string;
   red_zone_cases: number;
+  unassigned_cases_total: number;
 }
 
 export function useOverdueCases(params: Record<string, unknown> = {}) {
@@ -120,6 +146,81 @@ export function useSbDashboard() {
   });
 }
 
+export function useSbTodayWork() {
+  return useQuery({
+    queryKey: ["sb-dashboard-today"],
+    queryFn: async () => {
+      const { data } = await api.get("/api/sb/dashboard/today");
+      return data as {
+        red_zone_cases: SbTodayWorkItem[];
+        promises_today: SbTodayWorkItem[];
+        promises_overdue: SbTodayWorkItem[];
+        unassigned_top: SbTodayWorkItem[];
+      };
+    },
+  });
+}
+
+export function useSbCaseContext(caseId: string) {
+  return useQuery({
+    queryKey: ["sb-case-context", caseId],
+    queryFn: async () => {
+      const { data } = await api.get(`/api/sb/cases/${caseId}/context`);
+      return data as SbCaseContext;
+    },
+    enabled: !!caseId,
+  });
+}
+
+export function useSbStats(dateFrom?: string, dateTo?: string) {
+  return useQuery({
+    queryKey: ["sb-stats", dateFrom, dateTo],
+    queryFn: async () => {
+      const { data } = await api.get("/api/sb/stats", {
+        params: { date_from: dateFrom, date_to: dateTo },
+      });
+      return data as {
+        cases_closed: number;
+        promises_fulfilled_amount: string | number;
+        avg_days_overdue_closed: number | null;
+      };
+    },
+  });
+}
+
+export function useSbPromisesCalendar(dateFrom: string, dateTo: string) {
+  return useQuery({
+    queryKey: ["sb-promises-calendar", dateFrom, dateTo],
+    queryFn: async () => {
+      const { data } = await api.get("/api/sb/promises/calendar", {
+        params: { date_from: dateFrom, date_to: dateTo },
+      });
+      return data as {
+        promise_id: string;
+        case_id: string;
+        deal_id: string;
+        promised_date: string;
+        promised_amount: number;
+        total_debt: number;
+      }[];
+    },
+    enabled: !!dateFrom && !!dateTo,
+  });
+}
+
+export function useUpdateCaseNotes(caseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (internal_notes: string | null) => {
+      const { data } = await api.patch(`/api/sb/cases/${caseId}/notes`, { internal_notes });
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sb-cases", caseId] });
+    },
+  });
+}
+
 export function useAssignCase() {
   const qc = useQueryClient();
   return useMutation({
@@ -127,7 +228,28 @@ export function useAssignCase() {
       const { data } = await api.patch(`/api/sb/cases/${caseId}/assign`, { sb_user_id });
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sb-cases"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sb-cases"] });
+      qc.invalidateQueries({ queryKey: ["sb-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["sb-dashboard-today"] });
+      qc.invalidateQueries({ queryKey: ["sb-control"] });
+      qc.invalidateQueries({ queryKey: ["analytics", "sb-performance"] });
+    },
+  });
+}
+
+export function useTakeCase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (caseId: string) => {
+      const { data } = await api.post(`/api/sb/cases/${caseId}/take`);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sb-cases"] });
+      qc.invalidateQueries({ queryKey: ["sb-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["sb-dashboard-today"] });
+    },
   });
 }
 

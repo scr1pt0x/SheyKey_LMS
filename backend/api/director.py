@@ -60,14 +60,18 @@ async def get_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("director")),
 ) -> DirectorDashboardResponse:
-    cache_key = f"{DASHBOARD_CACHE_PREFIX}main"
+    cache_key = f"{DASHBOARD_CACHE_PREFIX}main:v2"
     cached = await cache_get(cache_key)
     if cached:
         return DirectorDashboardResponse.model_validate(json.loads(cached))
 
     today = datetime.now(timezone.utc).date()
-    week_start = today - timedelta(days=7)
     month_start = today.replace(day=1)
+    day_start = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+    day_end = datetime.combine(today, datetime.max.time(), tzinfo=timezone.utc)
+    week_start_date = today - timedelta(days=6)
+    week_start = datetime.combine(week_start_date, datetime.min.time(), tzinfo=timezone.utc)
+    month_start_dt = datetime.combine(month_start, datetime.min.time(), tzinfo=timezone.utc)
 
     total_portfolio = (
         await db.execute(
@@ -91,45 +95,39 @@ async def get_dashboard(
     total_active_overdue = active_deals + overdue_deals
     overdue_pct = (overdue_deals / total_active_overdue * 100) if total_active_overdue > 0 else 0.0
 
+    # Фактические поступления (таблица payments), не ожидаемые по графику
     cash_flow_today = (
         await db.execute(
-            select(func.coalesce(func.sum(PaymentSchedule.amount), 0))
-            .where(PaymentSchedule.due_date == today)
-            .where(PaymentSchedule.status.in_(["pending", "partial"]))
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .where(Payment.paid_at >= day_start)
+            .where(Payment.paid_at <= day_end)
         )
     ).scalar_one()
 
     cash_flow_week = (
         await db.execute(
-            select(func.coalesce(func.sum(PaymentSchedule.amount - PaymentSchedule.paid_amount), 0))
-            .where(PaymentSchedule.due_date >= today)
-            .where(PaymentSchedule.due_date <= today + timedelta(days=7))
-            .where(PaymentSchedule.status.in_(["pending", "partial"]))
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .where(Payment.paid_at >= week_start)
+            .where(Payment.paid_at <= day_end)
         )
     ).scalar_one()
 
     cash_flow_month = (
         await db.execute(
-            select(func.coalesce(func.sum(PaymentSchedule.amount - PaymentSchedule.paid_amount), 0))
-            .where(PaymentSchedule.due_date >= today)
-            .where(PaymentSchedule.due_date <= today.replace(day=28) + timedelta(days=4))
-            .where(PaymentSchedule.status.in_(["pending", "partial"]))
+            select(func.coalesce(func.sum(Payment.amount), 0))
+            .where(Payment.paid_at >= month_start_dt)
+            .where(Payment.paid_at <= day_end)
         )
     ).scalar_one()
 
     new_deals_month = (
         await db.execute(
             select(func.count())
-            .where(Deal.created_at >= datetime.combine(month_start, datetime.min.time(), tzinfo=timezone.utc))
+            .where(Deal.created_at >= month_start_dt)
         )
     ).scalar_one()
 
-    income_month = (
-        await db.execute(
-            select(func.coalesce(func.sum(Payment.amount), 0))
-            .where(Payment.paid_at >= datetime.combine(month_start, datetime.min.time(), tzinfo=timezone.utc))
-        )
-    ).scalar_one()
+    income_month = cash_flow_month
 
     data = DirectorDashboardResponse(
         total_portfolio=Decimal(str(total_portfolio)),
@@ -463,6 +461,10 @@ async def approve_deal(
         if has_overdue:
             deal.status = DealStatus.overdue
 
+    if deal.status == DealStatus.overdue:
+        from backend.services.overdue_case_service import sync_overdue_case_for_deal
+        await sync_overdue_case_for_deal(db, deal.id)
+
     await AuditService.log(
         db=db,
         user_id=str(current_user.id),
@@ -482,9 +484,26 @@ async def approve_deal(
         entity_id=str(deal_id),
         action_url=f"/deals/{deal_id}",
     )
-    await cache_delete(f"{DASHBOARD_CACHE_PREFIX}main")
+    await cache_delete(f"{DASHBOARD_CACHE_PREFIX}main:v2")
     await db.commit()
     return {"detail": "Сделка одобрена"}
+
+
+@router.post("/sync-overdue-cases")
+async def sync_overdue_cases(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("director")),
+) -> dict:
+    """Backfill overdue_cases for deals that already have overdue schedules."""
+    from backend.services.overdue_case_service import sync_all_overdue_deals
+
+    synced, created = await sync_all_overdue_deals(db)
+    await db.commit()
+    return {
+        "synced_cases": synced,
+        "created_cases": len(created),
+        "detail": "Синхронизация дел СБ завершена",
+    }
 
 
 @router.post("/approval/deals/{deal_id}/reject")
@@ -709,6 +728,10 @@ async def sb_control(
 ) -> dict:
     """Director view: all overdue cases with last contact date and SB employee stats."""
     from backend.models.overdue import ContactLog, OverdueCaseStatus
+    from backend.services.overdue_case_service import ensure_missing_overdue_cases
+
+    await ensure_missing_overdue_cases(db)
+    await db.commit()
 
     # Red zone threshold from settings
     red_setting = (
@@ -949,6 +972,12 @@ async def create_user(
     ).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="Пользователь с таким телефоном уже существует")
+
+    if body.role not in (UserRole.manager, UserRole.sb):
+        raise HTTPException(
+            status_code=400,
+            detail="Можно создавать только менеджеров и сотрудников СБ",
+        )
 
     user = User(
         name=body.name,
