@@ -36,6 +36,7 @@ const ACTION_LABELS: Record<string, string> = {
   BULK_IMPORT: "Массовый импорт",
   CHANGE_PASSWORD: "Смена пароля",
   DEACTIVATE: "Деактивация",
+  PROFIT_PERIOD_APPROVED: "Распределение прибыли утверждено",
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -46,6 +47,7 @@ const ACTION_COLORS: Record<string, string> = {
   LOGOUT: "bg-gray-100 text-gray-700",
   DEAL_APPROVED: "bg-green-100 text-green-800",
   DEAL_REJECTED: "bg-red-100 text-red-800",
+  PROFIT_PERIOD_APPROVED: "bg-green-100 text-green-800",
   PAYMENT_RECORDED: "bg-emerald-100 text-emerald-800",
   PAYMENT_CONFIRMED: "bg-emerald-100 text-emerald-800",
 };
@@ -65,6 +67,10 @@ const ENTITY_LABELS: Record<string, string> = {
   notifications_log: "Уведомления",
   system_settings: "Настройки",
   staff_notifications: "Уведомления сотрудников",
+  investors: "Инвесторы",
+  expenses: "Расходы",
+  profit_periods: "Распределение прибыли",
+  profit_distributions: "Доли инвесторов",
 };
 
 const ENTITY_OPTIONS = [

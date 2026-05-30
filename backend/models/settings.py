@@ -42,6 +42,7 @@ class SettingKey:
     IJARA_DEFAULT_PARAMS = "ijara_default_params"
     RED_ZONE_DAYS = "red_zone_days"
     DIRECTOR_EMAIL = "director_email"
+    MANAGER_BONUS_PCT = "manager_bonus_pct"
 
     DEFAULTS: dict = {
         SB_THRESHOLD_DAYS: 7,

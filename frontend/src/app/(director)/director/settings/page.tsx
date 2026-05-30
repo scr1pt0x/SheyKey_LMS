@@ -15,6 +15,7 @@ const SETTINGS_KEYS = [
   { key: "director_email",             label: "Email руководителя (автоотчёты)",           type: "text",    group: "Уведомления" },
   { key: "sms_api_key",                label: "SMS.ru — API ключ",                         type: "text",    group: "Уведомления" },
   { key: "sms_from",                   label: "SMS.ru — Имя отправителя",                  type: "text",    group: "Уведомления" },
+  { key: "manager_bonus_pct",          label: "Бонус менеджерам от прибыли (%)",           type: "number",  group: "Прибыль" },
 ];
 
 export default function SettingsPage() {

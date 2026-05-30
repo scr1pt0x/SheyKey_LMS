@@ -446,6 +446,23 @@ async def approve_deal(
     deal.approved_by = current_user.id
     deal.approved_at = datetime.now(timezone.utc)
 
+    # If backdated deal — immediately mark overdue schedules without waiting for Celery
+    today = datetime.now(timezone.utc).date()
+    if deal.start_date and deal.start_date < today:
+        from backend.models.payment import PaymentSchedule, PaymentStatus
+        overdue_result = await db.execute(
+            select(PaymentSchedule)
+            .where(PaymentSchedule.deal_id == deal.id)
+            .where(PaymentSchedule.due_date < today)
+            .where(PaymentSchedule.status == PaymentStatus.pending)
+        )
+        has_overdue = False
+        for sched in overdue_result.scalars().all():
+            sched.status = PaymentStatus.overdue
+            has_overdue = True
+        if has_overdue:
+            deal.status = DealStatus.overdue
+
     await AuditService.log(
         db=db,
         user_id=str(current_user.id),
@@ -453,7 +470,7 @@ async def approve_deal(
         entity="deals",
         entity_id=str(deal_id),
         old_val={"status": "pending"},
-        new_val={"status": "active", "comment": body.comment},
+        new_val={"status": deal.status.value, "comment": body.comment},
         ip=get_client_ip(request),
     )
     await notify_staff(

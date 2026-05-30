@@ -26,10 +26,8 @@ backend/keys/
 *.key
 dump.rdb
 
-# Alembic
-backend/migrations/versions/*.py
-!backend/migrations/versions/__init__.py
-!backend/migrations/versions/001_initial.py
+# Alembic (все ревизии должны быть в git)
+backend/migrations/versions/__pycache__/
 
 # Node
 node_modules/

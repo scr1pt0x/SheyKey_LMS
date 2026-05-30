@@ -21,6 +21,9 @@ import {
   MoreHorizontal,
   X,
   Upload,
+  TrendingUp,
+  Receipt,
+  Users2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -44,6 +47,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/director/audit",      label: "Аудит",         icon: Shield,      roles: ["director"] },
   { href: "/director/settings",   label: "Настройки",     icon: Settings,    roles: ["director"] },
   { href: "/director/import",     label: "Импорт данных", icon: Upload,      roles: ["director"] },
+  { href: "/director/profit",     label: "Прибыль",       icon: TrendingUp,  roles: ["director"], primary: true },
+  { href: "/director/investors",  label: "Инвесторы",     icon: Users2,      roles: ["director"] },
+  { href: "/director/expenses",   label: "Расходы",       icon: Receipt,     roles: ["director"] },
   { href: "/clients",             label: "Клиенты",       icon: Users,       roles: ["director"] },
   { href: "/deals",               label: "Сделки",        icon: FileText,    roles: ["director"] },
   // Manager

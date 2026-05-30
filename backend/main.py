@@ -44,6 +44,7 @@ from backend.api.documents import router as documents_router
 from backend.api.generate import router as generate_router
 from backend.api.notifications import router as notifications_router
 from backend.api.import_data import router as import_router
+from backend.api.profit import router as profit_router
 from backend.api.payments import router as payments_router
 from backend.api.sb import router as sb_router
 
@@ -58,6 +59,7 @@ app.include_router(sb_router)
 app.include_router(director_router)
 app.include_router(notifications_router)
 app.include_router(import_router)
+app.include_router(profit_router)
 
 
 @app.get("/api/health")

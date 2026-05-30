@@ -9,6 +9,7 @@ import { getErrorMessage } from "@/lib/axios";
 import { Upload, FileSpreadsheet, CheckCircle, AlertTriangle, ChevronRight } from "lucide-react";
 
 type Step = "upload" | "preview" | "result";
+type ImportMode = "clients" | "deals";
 
 interface PreviewData {
   headers: string[];
@@ -28,6 +29,13 @@ interface ImportResult {
   manager_id: string | null;
 }
 
+interface DealImportResult {
+  clients_imported: number;
+  deals_imported: number;
+  deals_skipped: number;
+  errors: string[];
+}
+
 const FIELD_LABELS: Record<string, string> = {
   full_name: "ФИО",
   phone: "Телефон",
@@ -36,10 +44,12 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 export default function ImportPage() {
+  const [mode, setMode] = useState<ImportMode>("clients");
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [dealResult, setDealResult] = useState<DealImportResult | null>(null);
   const [loading, setLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -67,10 +77,15 @@ export default function ImportPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const { data } = await api.post("/api/director/import/clients", form, {
+      const endpoint = mode === "deals" ? "/api/director/import/deals" : "/api/director/import/clients";
+      const { data } = await api.post(endpoint, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setResult(data as ImportResult);
+      if (mode === "deals") {
+        setDealResult(data as DealImportResult);
+      } else {
+        setResult(data as ImportResult);
+      }
       setStep("result");
     } catch (err) {
       toast({ title: "Ошибка импорта", description: getErrorMessage(err), variant: "destructive" });
@@ -84,6 +99,7 @@ export default function ImportPage() {
     setFile(null);
     setPreview(null);
     setResult(null);
+    setDealResult(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -94,17 +110,41 @@ export default function ImportPage() {
         <h1 className="text-xl font-bold">Импорт клиентов из таблицы</h1>
       </div>
 
+      {/* Mode selector */}
+      <div className="flex gap-2 bg-white border rounded-xl p-1.5 w-fit">
+        <button
+          onClick={() => { setMode("clients"); reset(); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === "clients" ? "bg-[#1a3a5c] text-white" : "text-gray-500 hover:bg-gray-100"}`}
+        >
+          Клиенты
+        </button>
+        <button
+          onClick={() => { setMode("deals"); reset(); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === "deals" ? "bg-[#1a3a5c] text-white" : "text-gray-500 hover:bg-gray-100"}`}
+        >
+          Сделки
+        </button>
+      </div>
+
       {/* Instruction */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800 space-y-1">
         <p className="font-semibold">Как подготовить файл из Google Таблиц:</p>
         <ol className="list-decimal list-inside space-y-0.5 text-blue-700">
-          <li>Открой таблицу с клиентами в Google Sheets</li>
+          <li>Открой нужный лист в Google Sheets</li>
           <li>Файл → Скачать → <strong>Microsoft Excel (.xlsx)</strong> или <strong>CSV</strong></li>
           <li>Загрузи полученный файл ниже</li>
         </ol>
-        <p className="text-xs text-blue-600 mt-2">
-          Система автоматически распознаёт колонки: ФИО, Телефон, Паспорт, Адрес — на русском и английском.
-        </p>
+        {mode === "clients" && (
+          <p className="text-xs text-blue-600 mt-2">
+            Колонки клиентов: ФИО, Телефон, Паспорт, Адрес — на русском и английском.
+          </p>
+        )}
+        {mode === "deals" && (
+          <p className="text-xs text-blue-600 mt-2">
+            Колонки сделок: Клиент (ФИО или телефон), Тип (Мурабаха/Иджара), Сумма, Наценка, Срок (мес.), Дата начала, Статус, Оплачено (мес.).
+            Клиенты должны быть импортированы заранее.
+          </p>
+        )}
       </div>
 
       {/* Steps breadcrumb */}
@@ -224,7 +264,38 @@ export default function ImportPage() {
         </div>
       )}
 
-      {/* ── Step 3: Result ──────────────────────────────────────────────────── */}
+      {/* ── Step 3: Result (deals) ──────────────────────────────────────────── */}
+      {step === "result" && dealResult && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <CheckCircle size={28} className="text-green-600" />
+              <h2 className="text-xl font-bold">Импорт сделок завершён</h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <Stat label="Сделок импортировано" value={dealResult.deals_imported} color="green" />
+              <Stat label="Пропущено" value={dealResult.deals_skipped} color="yellow" />
+              {dealResult.clients_imported > 0 && (
+                <Stat label="Клиентов создано" value={dealResult.clients_imported} color="gray" />
+              )}
+            </div>
+            {dealResult.errors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="font-medium text-red-700 mb-2">Ошибки ({dealResult.errors.length}):</p>
+                <ul className="text-sm text-red-600 space-y-0.5">
+                  {dealResult.errors.map((e, i) => <li key={i}>• {e}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <Button onClick={reset}>Импортировать ещё</Button>
+            <Button variant="outline" onClick={() => window.location.href = "/deals"}>Перейти к сделкам →</Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Result (clients) ─────────────────────────────────────────── */}
       {step === "result" && result && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border p-6 space-y-4">

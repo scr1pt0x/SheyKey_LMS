@@ -9,7 +9,9 @@ Endpoints:
 import csv
 import io
 import uuid
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timezone, date
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -20,8 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.database import get_db
 from backend.core.dependencies import require_role
 from backend.models.client import Client, KycStatus
+from backend.models.deal import Deal, DealStatus, DealType, DealParam
+from backend.models.overdue import OverdueCase
+from backend.models.payment import Payment, PaymentMethod, PaymentSchedule, PaymentStatus
 from backend.models.user import User, UserRole
 from backend.services.audit_service import AuditService
+from backend.services.payment_calculator import generate_schedule
 
 router = APIRouter(prefix="/api/director/import", tags=["import"])
 
@@ -110,6 +116,79 @@ class ImportResult(BaseModel):
     skipped_no_phone: int
     errors: list[str]
     manager_id: str | None
+
+
+class DealImportResult(BaseModel):
+    clients_imported: int
+    deals_imported: int
+    deals_skipped: int
+    errors: list[str]
+
+
+# ─── Deal column detection ───────────────────────────────────────────────────
+
+DEAL_ALIASES = {
+    "client_identifier": ["клиент", "фио", "имя", "телефон", "client", "заёмщик"],
+    "deal_type":        ["тип", "type", "вид сделки", "продукт"],
+    "principal":        ["сумма", "основной долг", "principal", "amount", "тело"],
+    "markup":           ["наценка", "markup", "маржа"],
+    "monthly_rent":     ["аренда", "ежемесячный платёж", "rent"],
+    "buyout_amount":    ["выкуп", "buyout"],
+    "duration_months":  ["срок", "мес", "months", "duration"],
+    "start_date":       ["дата начала", "дата выдачи", "start", "выдан"],
+    "status":           ["статус", "status", "состояние"],
+    "paid_installments":["оплачено", "выплачено", "paid", "погашено"],
+}
+
+DEAL_TYPE_MAP = {
+    "мурабаха": "murabaha", "murabaha": "murabaha",
+    "иджара": "ijara", "ijara": "ijara", "аренда": "ijara",
+}
+
+DEAL_STATUS_MAP = {
+    "активна": "active", "активная": "active", "active": "active",
+    "закрыта": "closed", "closed": "closed", "погашена": "closed",
+    "просрочена": "overdue", "overdue": "overdue",
+}
+
+
+def _detect_deal_column(header: str) -> str | None:
+    h = header.strip().lower()
+    for field, aliases in DEAL_ALIASES.items():
+        if any(a in h for a in aliases):
+            return field
+    return None
+
+
+def _parse_num(v: Any) -> float | None:
+    if v is None or str(v).strip() == "":
+        return None
+    clean = re.sub(r"[^\d.,]", "", str(v)).replace(",", ".")
+    try:
+        return float(clean)
+    except ValueError:
+        return None
+
+
+def _parse_dt(v: Any) -> date | None:
+    if not v:
+        return None
+    s = str(v).strip()
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _next_month_local(d: date, months: int) -> date:
+    from calendar import monthrange
+    month = d.month - 1 + months
+    year = d.year + month // 12
+    month = month % 12 + 1
+    day = min(d.day, monthrange(year, month)[1])
+    return date(year, month, day)
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
@@ -249,4 +328,224 @@ async def import_clients(
         skipped_no_phone=skipped_no_phone,
         errors=errors,
         manager_id=str(resolved_manager_id) if resolved_manager_id else None,
+    )
+
+
+@router.post("/deals", response_model=DealImportResult)
+async def import_deals(
+    file: UploadFile = File(...),
+    manager_id: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("director")),
+) -> DealImportResult:
+    """
+    Import deals (and clients if not yet in DB) from a XLSX/CSV file.
+    The file should contain deal rows with client identifier, type, amounts, dates.
+    """
+    content = await file.read()
+    try:
+        headers, rows = parse_file(content, file.filename or "file.csv")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Resolve manager
+    if manager_id:
+        mgr = await db.get(User, uuid.UUID(manager_id))
+        resolved_manager_id = mgr.id if mgr else None
+    else:
+        result = await db.execute(
+            select(User.id).where(User.role == UserRole.manager).where(User.is_active == True).limit(1)  # noqa
+        )
+        resolved_manager_id = result.scalar_one_or_none()
+
+    if not resolved_manager_id:
+        raise HTTPException(status_code=400, detail="Нет активных менеджеров.")
+
+    # Detect deal columns
+    col_map: dict[str, int] = {}
+    for i, h in enumerate(headers):
+        field = _detect_deal_column(h)
+        if field and field not in col_map:
+            col_map[field] = i
+
+    if "principal" not in col_map:
+        raise HTTPException(
+            status_code=400,
+            detail="Не найдена колонка суммы сделки (Сумма / Principal). Проверьте заголовки.",
+        )
+
+    def gcol(row: list[str], field: str) -> str:
+        idx = col_map.get(field)
+        return row[idx].strip() if idx is not None and idx < len(row) else ""
+
+    # Load existing clients for matching
+    clients_q = await db.execute(select(Client.phone, Client.full_name, Client.id))
+    clients_by_phone: dict[str, uuid.UUID] = {}
+    clients_by_name: dict[str, uuid.UUID] = {}
+    for phone, name, cid in clients_q.all():
+        if phone:
+            clients_by_phone[phone] = cid
+        if name:
+            clients_by_name[name.lower()] = cid
+
+    today = datetime.now(timezone.utc).date()
+    deals_imported = 0
+    deals_skipped = 0
+    errors: list[str] = []
+    clients_created = 0
+
+    for i, row in enumerate(rows, start=2):
+        try:
+            principal = _parse_num(gcol(row, "principal"))
+            if not principal:
+                deals_skipped += 1
+                continue
+
+            duration = int(_parse_num(gcol(row, "duration_months")) or 12)
+            markup = _parse_num(gcol(row, "markup")) or 0.0
+            monthly_rent = _parse_num(gcol(row, "monthly_rent"))
+            buyout = _parse_num(gcol(row, "buyout_amount"))
+            start_date = _parse_dt(gcol(row, "start_date")) or today
+            paid_count = int(_parse_num(gcol(row, "paid_installments")) or 0)
+
+            type_raw = gcol(row, "deal_type").lower()
+            deal_type_str = DEAL_TYPE_MAP.get(type_raw, "murabaha")
+            deal_type = DealType(deal_type_str)
+
+            status_raw = gcol(row, "status").lower()
+            status_str = DEAL_STATUS_MAP.get(status_raw, "active")
+
+            # Resolve client
+            client_raw = gcol(row, "client_identifier")
+            client_id: uuid.UUID | None = None
+
+            digits = re.sub(r"[^\d]", "", client_raw)
+            if digits:
+                for phone_fmt in [f"+7{digits[-10:]}", f"+{digits}"]:
+                    client_id = clients_by_phone.get(phone_fmt)
+                    if client_id:
+                        break
+
+            if not client_id:
+                client_id = clients_by_name.get(client_raw.lower())
+
+            if not client_id:
+                errors.append(f"Строка {i}: клиент '{client_raw}' не найден в системе")
+                deals_skipped += 1
+                continue
+
+            # Calculate total
+            if deal_type == DealType.murabaha:
+                total = principal + markup
+            elif deal_type == DealType.ijara:
+                total = (monthly_rent or 0) * duration + (buyout or 0)
+            else:
+                total = principal
+
+            # Determine actual status
+            if status_str == "closed":
+                final_status = DealStatus.closed
+            elif status_str == "overdue":
+                final_status = DealStatus.overdue
+            else:
+                overdue_cutoff = _next_month_local(start_date, paid_count + 1) if paid_count < duration else today
+                final_status = DealStatus.overdue if overdue_cutoff < today and paid_count < duration else DealStatus.active
+
+            end_date = _next_month_local(start_date, duration)
+
+            deal = Deal(
+                client_id=client_id,
+                manager_id=resolved_manager_id,
+                type=deal_type,
+                status=final_status,
+                principal=Decimal(str(principal)),
+                markup=Decimal(str(markup)),
+                total=Decimal(str(total)),
+                duration_months=duration,
+                start_date=start_date,
+                end_date=end_date,
+                approved_by=resolved_manager_id,
+                approved_at=datetime.now(timezone.utc),
+            )
+            db.add(deal)
+            await db.flush()
+
+            # Deal params
+            if deal_type == DealType.murabaha:
+                params = {"principal": str(principal), "markup": str(markup), "duration_months": duration}
+            elif deal_type == DealType.ijara:
+                params = {"monthly_rent": str(monthly_rent or 0), "duration_months": duration,
+                          "buyout_amount": str(buyout) if buyout else None}
+            else:
+                params = {"principal": str(principal), "duration_months": duration}
+
+            for key, value in params.items():
+                if value is not None:
+                    db.add(DealParam(deal_id=deal.id, key=key, value=value))
+
+            # Generate schedule
+            schedule_items = generate_schedule(deal_type.value, params, start_date)
+
+            for j, sched_item in enumerate(schedule_items):
+                is_paid = j < paid_count
+                is_overdue = not is_paid and sched_item.due_date < today
+                sched_status = PaymentStatus.paid if is_paid else (PaymentStatus.overdue if is_overdue else PaymentStatus.pending)
+                paid_amount = sched_item.amount if is_paid else Decimal("0")
+
+                sched = PaymentSchedule(
+                    deal_id=deal.id,
+                    installment_number=sched_item.installment_number,
+                    due_date=sched_item.due_date,
+                    amount=sched_item.amount,
+                    paid_amount=paid_amount,
+                    status=sched_status,
+                    installment_type=sched_item.installment_type,
+                )
+                db.add(sched)
+                await db.flush()
+
+                if is_paid:
+                    db.add(Payment(
+                        schedule_id=sched.id,
+                        deal_id=deal.id,
+                        amount=sched_item.amount,
+                        paid_at=datetime.combine(sched_item.due_date, datetime.min.time(), tzinfo=timezone.utc),
+                        method=PaymentMethod.transfer,
+                        recorded_by=resolved_manager_id,
+                    ))
+
+            # Create overdue case
+            if final_status == DealStatus.overdue:
+                overdue_schedules = [s for j, s in enumerate(schedule_items) if j >= paid_count and s.due_date < today]
+                total_debt = sum(float(s.amount) for s in overdue_schedules)
+                earliest = min((s.due_date for s in overdue_schedules), default=today)
+                db.add(OverdueCase(
+                    deal_id=deal.id,
+                    total_debt=Decimal(str(total_debt)),
+                    days_overdue=(today - earliest).days,
+                ))
+
+            deals_imported += 1
+
+        except Exception as exc:
+            errors.append(f"Строка {i}: {exc}")
+            deals_skipped += 1
+            if len(errors) >= 20:
+                errors.append("…слишком много ошибок, остальные пропущены")
+                break
+
+    await AuditService.log(
+        db=db,
+        user_id=str(current_user.id),
+        action="BULK_IMPORT",
+        entity="deals",
+        new_val={"imported": deals_imported, "skipped": deals_skipped, "source": file.filename},
+    )
+    await db.commit()
+
+    return DealImportResult(
+        clients_imported=clients_created,
+        deals_imported=deals_imported,
+        deals_skipped=deals_skipped,
+        errors=errors,
     )

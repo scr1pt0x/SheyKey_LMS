@@ -11,6 +11,9 @@ from .audit import AuditLog
 from .calendar_task import CalendarTask
 from .staff_notification import StaffNotification
 from .push_subscription import PushSubscription
+from .investor import Investor
+from .expense import Expense, ExpenseCategory
+from .profit_period import ProfitPeriod, ProfitDistribution, ProfitPeriodStatus
 
 __all__ = [
     "User", "UserRole",
@@ -26,4 +29,7 @@ __all__ = [
     "CalendarTask",
     "StaffNotification",
     "PushSubscription",
+    "Investor",
+    "Expense", "ExpenseCategory",
+    "ProfitPeriod", "ProfitDistribution", "ProfitPeriodStatus",
 ]
