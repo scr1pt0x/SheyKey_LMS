@@ -3,7 +3,7 @@ import pytest
 
 
 VALID_TRANSITIONS = {
-    "draft": ["pending"],
+    "draft": ["pending", "active"],
     "pending": ["active", "draft"],
     "active": ["closed", "overdue"],
     "overdue": ["active", "closed"],
@@ -11,7 +11,7 @@ VALID_TRANSITIONS = {
 }
 
 INVALID_TRANSITIONS = {
-    "draft": ["active", "closed", "overdue"],
+    "draft": ["closed", "overdue"],
     "pending": ["overdue", "closed"],
     "active": ["draft", "pending"],
     "overdue": ["draft", "pending"],
@@ -26,6 +26,9 @@ def is_valid_transition(from_status: str, to_status: str) -> bool:
 class TestDealStatusMachine:
     def test_draft_to_pending(self):
         assert is_valid_transition("draft", "pending") is True
+
+    def test_draft_to_active_manager_activate(self):
+        assert is_valid_transition("draft", "active") is True
 
     def test_pending_to_active(self):
         assert is_valid_transition("pending", "active") is True
@@ -44,9 +47,6 @@ class TestDealStatusMachine:
 
     def test_overdue_to_closed(self):
         assert is_valid_transition("overdue", "closed") is True
-
-    def test_draft_cannot_go_active(self):
-        assert is_valid_transition("draft", "active") is False
 
     def test_draft_cannot_go_overdue(self):
         assert is_valid_transition("draft", "overdue") is False

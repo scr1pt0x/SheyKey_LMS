@@ -129,6 +129,15 @@ class TestIjara:
         assert schedules[2].due_date == date(2025, 4, 1)
 
 
+class TestDealEndDate:
+    def test_start_on_31st_plus_months_no_value_error(self):
+        from dateutil.relativedelta import relativedelta
+
+        start = date(2026, 5, 31)
+        end = start + relativedelta(months=6)
+        assert end == date(2026, 11, 30)
+
+
 class TestGenerateDispatcher:
     def test_murabaha_dispatch(self):
         schedules = generate_schedule(

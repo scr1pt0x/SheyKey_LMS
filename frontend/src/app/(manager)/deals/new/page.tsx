@@ -13,6 +13,8 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { DEAL_TYPE_LABELS } from "@/lib/utils";
 import { useClients } from "@/hooks/useClients";
+import { useStaffUsers } from "@/hooks/useDirector";
+import { useAuthStore } from "@/store/auth";
 
 type DealType = "murabaha" | "ijara";
 
@@ -32,7 +34,17 @@ export default function NewDealPage() {
   const preselectedClientId = searchParams.get("client_id") ?? "";
 
   const [dealType, setDealType] = useState<DealType>("murabaha");
-  const { data: clientsData } = useClients({ limit: 100, is_archived: false });
+  const [responsibleManagerId, setResponsibleManagerId] = useState("");
+  const user = useAuthStore((s) => s.user);
+  const isDirector = user?.role === "director";
+  const { data: clientsData } = useClients({
+    scope: "all",
+    limit: 100,
+    is_archived: false,
+  });
+  const { data: managers = [] } = useStaffUsers("manager", {
+    enabled: !!isDirector,
+  });
   const createDeal = useCreateDeal();
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<DealCreateForm>({
@@ -54,6 +66,9 @@ export default function NewDealPage() {
     };
     const product = data.product_description?.trim();
     if (product) payload.product_description = product;
+    if (responsibleManagerId) {
+      payload.responsible_manager_id = responsibleManagerId;
+    }
 
     if (data.type === "murabaha" && data.murabaha) {
       payload.murabaha = {
@@ -99,6 +114,25 @@ export default function NewDealPage() {
             ))}
           </select>
         </Field>
+
+        {isDirector && (
+          <Field label="Ответственный менеджер">
+            <select
+              value={responsibleManagerId}
+              onChange={(e) => setResponsibleManagerId(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
+            >
+              <option value="">Не назначать (остаётся у руководителя)</option>
+              {managers
+                .filter((m) => m.is_active)
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        )}
 
         <Field label="Что купил (товар / предмет сделки)" error={errors.product_description?.message}>
           <input

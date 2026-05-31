@@ -29,9 +29,10 @@ export interface Deal {
   product_description?: string | null;
   purchase_summary?: string | null;
   manager_name?: string | null;
+  client_name?: string | null;
   created_at: string;
-  updated_at: string;
-  payment_schedules: ScheduleItem[];
+  updated_at?: string;
+  payment_schedules?: ScheduleItem[];
 }
 
 export interface DealListParams {
@@ -56,14 +57,14 @@ export function useDeals(params: DealListParams = {}) {
   });
 }
 
-export function useDeal(id: string) {
+export function useDeal(id: string, queryEnabled = true) {
   return useQuery({
     queryKey: ["deals", id],
     queryFn: async () => {
       const { data } = await api.get(`/api/deals/${id}`);
-      return data as Deal;
+      return data as Deal & { payment_schedules: ScheduleItem[] };
     },
-    enabled: !!id,
+    enabled: queryEnabled && !!id,
   });
 }
 

@@ -119,10 +119,7 @@ async def search_clients(
 
     if current_user.role == UserRole.manager:
         client_rows = await db.execute(
-            select(Client)
-            .where(Client.manager_id == current_user.id)
-            .where(text_filter)
-            .limit(limit)
+            select(Client).where(text_filter).limit(limit)
         )
         for client in client_rows.scalars().all():
             cases = await _deals_as_cases_for_client(db, client.id)

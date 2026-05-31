@@ -1,11 +1,7 @@
 "use client";
 
-import {
-  useDirectorDashboard,
-  usePortfolioByType,
-  useIssuanceDynamics,
-} from "@/hooks/useDirector";
-import { formatCurrency, DEAL_TYPE_LABELS } from "@/lib/utils";
+import { useDirectorDashboard, useIssuanceDynamics } from "@/hooks/useDirector";
+import { formatCurrency } from "@/lib/utils";
 import {
   AreaChart,
   Area,
@@ -14,17 +10,10 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
 } from "recharts";
-
-const PIE_COLORS = ["#1a3a5c", "#2563eb", "#10b981", "#f59e0b"];
 
 export default function DirectorDashboardPage() {
   const { data: dashboard, isLoading } = useDirectorDashboard();
-  const { data: portfolio } = usePortfolioByType();
   const { data: dynamics } = useIssuanceDynamics(12);
 
   if (isLoading) {
@@ -55,64 +44,33 @@ export default function DirectorDashboardPage() {
         <CashCard label="Поступления за месяц" subtitle="факт, с 1-го числа" value={dashboard.cash_flow_month} />
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Issuance dynamics */}
-        {dynamics && dynamics.length > 0 && (
-          <div className="bg-white rounded-xl border p-5">
-            <h2 className="font-semibold mb-4">Динамика выдач</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={dynamics} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1a3a5c" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#1a3a5c" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                <Area
-                  type="monotone"
-                  dataKey="total_amount"
-                  stroke="#1a3a5c"
-                  strokeWidth={2}
-                  fill="url(#colorTotal)"
-                  name="Объём"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Portfolio by type */}
-        {portfolio && portfolio.length > 0 && (
-          <div className="bg-white rounded-xl border p-5">
-            <h2 className="font-semibold mb-4">Портфель по типам</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={portfolio}
-                  dataKey="total_amount"
-                  nameKey="type"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  label={({ type, pct }: { type: string; pct: number }) =>
-                    `${DEAL_TYPE_LABELS[type] ?? type} ${pct}%`
-                  }
-                >
-                  {portfolio.map((_: unknown, index: number) => (
-                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
+      {dynamics && dynamics.length > 0 && (
+        <div className="bg-white rounded-xl border p-5">
+          <h2 className="font-semibold mb-4">Динамика выдач</h2>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={dynamics} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#1a3a5c" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#1a3a5c" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} />
+              <Tooltip formatter={(v: number) => formatCurrency(v)} />
+              <Area
+                type="monotone"
+                dataKey="total_amount"
+                stroke="#1a3a5c"
+                strokeWidth={2}
+                fill="url(#colorTotal)"
+                name="Объём"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Income */}
       <div className="bg-white rounded-xl border p-5">

@@ -25,6 +25,7 @@ class IjaraParams(BaseModel):
 class DealCreate(BaseModel):
     client_id: uuid.UUID
     type: DealType
+    responsible_manager_id: uuid.UUID | None = None
     product_description: str | None = Field(None, max_length=2000)
     murabaha: MurabahaParams | None = None
     ijara: IjaraParams | None = None
@@ -95,6 +96,7 @@ class DealListItem(BaseModel):
     product_description: str | None = None
     purchase_summary: str | None = None
     manager_name: str | None = None
+    client_name: str | None = None
     created_at: datetime
 
 

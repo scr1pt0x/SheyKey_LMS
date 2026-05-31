@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select, update
@@ -9,7 +10,7 @@ from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, get_current_user, require_role
 from backend.models.client import Client, KycStatus
 from backend.models.notification import NotificationLog
-from backend.models.user import User
+from backend.models.user import User, UserRole
 from backend.schemas.client import (
     ClientCreate,
     ClientListItem,
@@ -29,6 +30,10 @@ async def list_clients(
     q: str | None = Query(None, description="Search by name, phone or passport"),
     kyc_status: KycStatus | None = None,
     manager_id: uuid.UUID | None = None,
+    scope: Literal["portfolio", "all"] = Query(
+        "portfolio",
+        description="portfolio — только свои клиенты (менеджер); all — все для оформления сделки",
+    ),
     is_archived: bool = False,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -48,9 +53,13 @@ async def list_clients(
         )
     if kyc_status:
         query = query.where(Client.kyc_status == kyc_status)
-    effective_manager_id = list_manager_filter(current_user, manager_id)
-    if effective_manager_id:
-        query = query.where(Client.manager_id == effective_manager_id)
+    if current_user.role == UserRole.manager:
+        if scope == "portfolio":
+            query = query.where(Client.manager_id == current_user.id)
+    else:
+        effective_manager_id = list_manager_filter(current_user, manager_id)
+        if effective_manager_id:
+            query = query.where(Client.manager_id == effective_manager_id)
 
     query = query.where(Client.is_archived == is_archived)
 

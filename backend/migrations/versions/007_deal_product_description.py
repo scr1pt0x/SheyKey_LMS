@@ -15,7 +15,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("deals", sa.Column("product_description", sa.Text(), nullable=True))
+    conn = op.get_bind()
+    insp = sa.inspect(conn)
+    if "product_description" not in [c["name"] for c in insp.get_columns("deals")]:
+        op.add_column("deals", sa.Column("product_description", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:

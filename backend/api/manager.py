@@ -1,23 +1,34 @@
 """Manager personal dashboard and stats."""
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database import get_db
-from backend.core.dependencies import require_role
+from backend.core.dependencies import get_client_ip, require_role
 from backend.models.client import Client, KycStatus
 from backend.models.deal import Deal, DealStatus
 from backend.models.payment import Payment, PaymentSchedule, PaymentStatus
 from backend.models.user import User
 from backend.schemas.manager import (
+    CashLedgerItem,
     DealBrief,
+    ManagerCashManualCreate,
+    ManagerCashResponse,
     ManagerDashboardResponse,
     ManagerStatsResponse,
     ScheduledPaymentBrief,
+)
+from backend.services.audit_service import AuditService
+from backend.models.manager_cash_entry import ManagerCashEntryKind
+from backend.services.manager_cash_service import (
+    build_cash_ledger,
+    cash_balance,
+    cash_totals,
+    create_cash_entry,
 )
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
@@ -237,4 +248,108 @@ async def manager_stats(
     return ManagerStatsResponse(
         deals_created=deals_created,
         payments_collected=Decimal(str(payments_collected)),
+    )
+
+
+@router.get("/cash", response_model=ManagerCashResponse)
+async def manager_cash_ledger(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("manager")),
+) -> ManagerCashResponse:
+    mid = _manager_id(current_user)
+    today = datetime.now(timezone.utc).date()
+    month_start = today.replace(day=1)
+    day_start = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+    day_end = datetime.combine(today, datetime.max.time(), tzinfo=timezone.utc)
+    month_start_dt = datetime.combine(month_start, datetime.min.time(), tzinfo=timezone.utc)
+
+    rows, total = await build_cash_ledger(
+        db, mid, date_from=date_from, date_to=date_to, limit=limit, offset=offset
+    )
+    total_today, total_month, total_all = await cash_totals(
+        db, mid, day_start, day_end, month_start_dt
+    )
+
+    return ManagerCashResponse(
+        items=[
+            CashLedgerItem(
+                id=r.id,
+                entry_type=r.entry_type,
+                amount=r.amount,
+                paid_at=r.paid_at,
+                method=r.method,
+                description=r.description,
+                deal_id=r.deal_id,
+                client_name=r.client_name,
+            )
+            for r in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+        total_today=total_today,
+        total_month=total_month,
+        total_all_time=total_all,
+    )
+
+
+@router.post("/cash", response_model=CashLedgerItem, status_code=status.HTTP_201_CREATED)
+async def manager_cash_manual_entry(
+    body: ManagerCashManualCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("manager")),
+) -> CashLedgerItem:
+    mid = _manager_id(current_user)
+    kind = (
+        ManagerCashEntryKind.expense
+        if body.entry_kind == "expense"
+        else ManagerCashEntryKind.income
+    )
+    if kind == ManagerCashEntryKind.expense:
+        balance = await cash_balance(db, mid, None, None)
+        if body.amount > balance:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Недостаточно средств в кассе. Доступно: {balance}",
+            )
+
+    entry = await create_cash_entry(
+        db,
+        mid,
+        amount=body.amount,
+        paid_at=body.paid_at,
+        method=body.method,
+        description=body.description,
+        entry_kind=kind,
+    )
+    await AuditService.log(
+        db=db,
+        user_id=str(current_user.id),
+        action="CASH_EXPENSE" if kind == ManagerCashEntryKind.expense else "CASH_MANUAL_ENTRY",
+        entity="manager_cash_entries",
+        entity_id=str(entry.id),
+        new_val={
+            "amount": str(body.amount),
+            "method": body.method.value,
+            "entry_kind": kind.value,
+        },
+        ip=get_client_ip(request),
+    )
+    await db.commit()
+    await db.refresh(entry)
+    ledger_type = "expense" if kind == ManagerCashEntryKind.expense else "manual"
+    return CashLedgerItem(
+        id=f"manual-{entry.id}",
+        entry_type=ledger_type,
+        amount=Decimal(str(entry.amount)),
+        paid_at=entry.paid_at,
+        method=entry.method.value,
+        description=entry.description,
+        deal_id=None,
+        client_name=None,
     )

@@ -1,16 +1,13 @@
 import uuid
 from datetime import date, datetime, timezone
 
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.core.access import (
-    CLIENT_NOT_IN_PORTFOLIO,
-    list_manager_filter,
-    require_deal_access,
-)
+from backend.core.access import list_manager_filter, require_deal_access
 from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, get_current_user, require_role
 from backend.models.client import Client
@@ -31,6 +28,11 @@ from backend.schemas.deal import (
     ScheduleItemResponse,
 )
 from backend.services.audit_service import AuditService
+from backend.services.deal_activation_service import activate_deal
+from backend.services.deal_portfolio_service import (
+    assign_deal_portfolio,
+    resolve_responsible_manager_id,
+)
 from backend.services.deal_display import deal_purchase_summary, deal_purchase_summary_from_deal
 from backend.services.payment_calculator import generate_schedule
 from backend.services.push_service import notify_staff
@@ -49,12 +51,26 @@ async def _manager_names_by_id(db: AsyncSession, manager_ids: set[uuid.UUID]) ->
     return {row.id: row.name for row in rows.all()}
 
 
-def _build_deal_list_item(deal: Deal, manager_name: str | None) -> DealListItem:
+async def _client_names_by_id(db: AsyncSession, client_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not client_ids:
+        return {}
+    rows = await db.execute(
+        select(Client.id, Client.full_name).where(Client.id.in_(client_ids))
+    )
+    return {row.id: row.full_name for row in rows.all()}
+
+
+def _build_deal_list_item(
+    deal: Deal,
+    manager_name: str | None,
+    client_name: str | None,
+) -> DealListItem:
     params = _deal_params_to_dict(deal) if deal.params else None
     base = DealListItem.model_validate(deal)
     return base.model_copy(
         update={
             "manager_name": manager_name,
+            "client_name": client_name,
             "purchase_summary": deal_purchase_summary(
                 deal.type, deal.principal, deal.product_description, params
             ),
@@ -96,14 +112,16 @@ async def list_deals(
     if type_filter:
         query = query.where(Deal.type == type_filter)
     effective_manager_id = list_manager_filter(current_user, manager_id)
-    if effective_manager_id:
+    if effective_manager_id and not (
+        current_user.role == UserRole.manager and client_id
+    ):
         query = query.where(Deal.manager_id == effective_manager_id)
     if client_id:
         query = query.where(Deal.client_id == client_id)
     if date_from:
-        query = query.where(Deal.start_date >= date_from)
+        query = query.where(func.date(Deal.created_at) >= date_from)
     if date_to:
-        query = query.where(Deal.start_date <= date_to)
+        query = query.where(func.date(Deal.created_at) <= date_to)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
     rows = await db.execute(
@@ -113,10 +131,18 @@ async def list_deals(
         .offset(offset)
     )
     deals = rows.scalars().all()
-    names = await _manager_names_by_id(db, {d.manager_id for d in deals})
+    manager_names = await _manager_names_by_id(db, {d.manager_id for d in deals})
+    client_names = await _client_names_by_id(db, {d.client_id for d in deals})
 
     return PaginatedResponse(
-        items=[_build_deal_list_item(d, names.get(d.manager_id)) for d in deals],
+        items=[
+            _build_deal_list_item(
+                d,
+                manager_names.get(d.manager_id),
+                client_names.get(d.client_id),
+            )
+            for d in deals
+        ],
         total=total,
         limit=limit,
         offset=offset,
@@ -135,12 +161,6 @@ async def create_deal(
     client = await db.get(Client, body.client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Клиент не найден")
-    if current_user.role == UserRole.manager and client.manager_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=CLIENT_NOT_IN_PORTFOLIO,
-        )
-
     if body.type == DealType.murabaha and body.murabaha:
         p = body.murabaha
         principal = p.principal
@@ -179,9 +199,7 @@ async def create_deal(
         total=total,
         duration_months=duration_months,
         start_date=start_date,
-        end_date=start_date.replace(year=start_date.year + (start_date.month + duration_months - 1) // 12,
-                                    month=(start_date.month + duration_months - 1) % 12 + 1)
-        if start_date else None,
+        end_date=start_date + relativedelta(months=duration_months) if start_date else None,
     )
     db.add(deal)
     await db.flush()
@@ -192,6 +210,11 @@ async def create_deal(
 
     schedule_items = generate_schedule(body.type.value, params_data, start_date)
     await _create_schedules(db, deal, schedule_items)
+
+    responsible_id = await resolve_responsible_manager_id(
+        db, current_user, body.responsible_manager_id
+    )
+    await assign_deal_portfolio(db, deal, client, responsible_id)
 
     await AuditService.log(
         db=db,
@@ -235,7 +258,7 @@ async def get_deal(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
-    require_deal_access(deal, current_user)
+    await require_deal_access(db, deal, current_user)
     return _build_deal_response(deal)
 
 
@@ -255,7 +278,7 @@ async def update_deal(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
-    require_deal_access(deal, current_user)
+    await require_deal_access(db, deal, current_user)
     if deal.status not in (DealStatus.draft, DealStatus.pending):
         raise HTTPException(
             status_code=400,
@@ -322,39 +345,64 @@ async def submit_deal(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
-    require_deal_access(deal, current_user)
+    await require_deal_access(db, deal, current_user)
     if deal.status != DealStatus.draft:
-        raise HTTPException(status_code=400, detail="Только черновик можно отправить на согласование")
+        raise HTTPException(status_code=400, detail="Только черновик можно оформить")
 
-    deal.status = DealStatus.pending
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="STATUS_CHANGE",
-        entity="deals",
-        entity_id=str(deal.id),
-        old_val={"status": "draft"},
-        new_val={"status": "pending"},
-        ip=get_client_ip(request),
-    )
-    # Notify all directors about the new deal pending approval
-    directors = (
-        await db.execute(
-            select(User).where(User.role == UserRole.director).where(User.is_active == True)  # noqa
-        )
-    ).scalars().all()
-    for director in directors:
-        await notify_staff(
+    if current_user.role == UserRole.manager:
+        client = await db.get(Client, deal.client_id)
+        if client:
+            await assign_deal_portfolio(db, deal, client, current_user.id)
+        new_status = await activate_deal(db, deal, current_user.id)
+        await AuditService.log(
             db=db,
-            user_id=director.id,
-            title="Новая сделка на согласовании",
-            body=f"Сделка на {deal.total} ₽ ожидает вашего решения.",
-            entity_type="deals",
+            user_id=str(current_user.id),
+            action="STATUS_CHANGE",
+            entity="deals",
             entity_id=str(deal.id),
-            action_url=f"/director/approval",
+            old_val={"status": "draft"},
+            new_val={"status": new_status.value},
+            ip=get_client_ip(request),
         )
+    else:
+        deal.status = DealStatus.pending
+        await AuditService.log(
+            db=db,
+            user_id=str(current_user.id),
+            action="STATUS_CHANGE",
+            entity="deals",
+            entity_id=str(deal.id),
+            old_val={"status": "draft"},
+            new_val={"status": "pending"},
+            ip=get_client_ip(request),
+        )
+        directors = (
+            await db.execute(
+                select(User).where(User.role == UserRole.director).where(User.is_active == True)  # noqa
+            )
+        ).scalars().all()
+        for director in directors:
+            await notify_staff(
+                db=db,
+                user_id=director.id,
+                title="Новая сделка на согласовании",
+                body=f"Сделка на {deal.total} ₽ ожидает вашего решения.",
+                entity_type="deals",
+                entity_id=str(deal.id),
+                action_url="/director/approval",
+            )
+
     await db.commit()
-    await db.refresh(deal)
+    result = await db.execute(
+        select(Deal)
+        .where(Deal.id == deal.id)
+        .options(
+            selectinload(Deal.payment_schedules),
+            selectinload(Deal.params),
+            selectinload(Deal.manager),
+        )
+    )
+    deal = result.scalar_one()
     return _build_deal_response(deal)
 
 
@@ -368,7 +416,7 @@ async def list_deal_restructurings(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
-    require_deal_access(deal, current_user)
+    await require_deal_access(db, deal, current_user)
 
     rows = await db.execute(
         select(Restructuring)
@@ -390,7 +438,7 @@ async def request_restructure(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
-    require_deal_access(deal, current_user)
+    await require_deal_access(db, deal, current_user)
     if deal.status not in (DealStatus.active, DealStatus.overdue):
         raise HTTPException(
             status_code=400,

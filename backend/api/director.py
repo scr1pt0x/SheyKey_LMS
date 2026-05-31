@@ -479,30 +479,25 @@ async def approve_deal(
     if deal.status != DealStatus.pending:
         raise HTTPException(status_code=400, detail="Сделка не ожидает согласования")
 
-    deal.status = DealStatus.active
-    deal.approved_by = current_user.id
-    deal.approved_at = datetime.now(timezone.utc)
+    from backend.models.client import Client
+    from backend.services.deal_activation_service import activate_deal
+    from backend.services.deal_portfolio_service import (
+        assign_deal_portfolio,
+        resolve_responsible_manager_id,
+        user_is_manager,
+    )
 
-    # If backdated deal — immediately mark overdue schedules without waiting for Celery
-    today = datetime.now(timezone.utc).date()
-    if deal.start_date and deal.start_date < today:
-        from backend.models.payment import PaymentSchedule, PaymentStatus
-        overdue_result = await db.execute(
-            select(PaymentSchedule)
-            .where(PaymentSchedule.deal_id == deal.id)
-            .where(PaymentSchedule.due_date < today)
-            .where(PaymentSchedule.status == PaymentStatus.pending)
-        )
-        has_overdue = False
-        for sched in overdue_result.scalars().all():
-            sched.status = PaymentStatus.overdue
-            has_overdue = True
-        if has_overdue:
-            deal.status = DealStatus.overdue
+    client = await db.get(Client, deal.client_id)
+    if client:
+        if body.responsible_manager_id is not None:
+            responsible_id = await resolve_responsible_manager_id(
+                db, current_user, body.responsible_manager_id
+            )
+            await assign_deal_portfolio(db, deal, client, responsible_id)
+        elif await user_is_manager(db, deal.manager_id):
+            await assign_deal_portfolio(db, deal, client, deal.manager_id)
 
-    if deal.status == DealStatus.overdue:
-        from backend.services.overdue_case_service import sync_overdue_case_for_deal
-        await sync_overdue_case_for_deal(db, deal.id)
+    new_status = await activate_deal(db, deal, current_user.id)
 
     await AuditService.log(
         db=db,
@@ -511,7 +506,7 @@ async def approve_deal(
         entity="deals",
         entity_id=str(deal_id),
         old_val={"status": "pending"},
-        new_val={"status": deal.status.value, "comment": body.comment},
+        new_val={"status": new_status.value, "comment": body.comment},
         ip=get_client_ip(request),
     )
     await notify_staff(
@@ -523,7 +518,6 @@ async def approve_deal(
         entity_id=str(deal_id),
         action_url=f"/deals/{deal_id}",
     )
-    await cache_delete(f"{DASHBOARD_CACHE_PREFIX}main:v2")
     await db.commit()
     return {"detail": "Сделка одобрена"}
 
@@ -685,27 +679,51 @@ async def get_team(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("director")),
 ) -> list[ManagerPortfolioItem]:
+    # Агрегаты по сделкам и аудиту отдельно — иначе JOIN audit_log размножает строки
+    # и завышает count/sum (например 1 сделка × N записей аудита).
+    deal_stats = (
+        select(
+            Deal.manager_id.label("manager_id"),
+            func.count(Deal.id).filter(Deal.status == DealStatus.active).label("active"),
+            func.count(Deal.id).filter(Deal.status == DealStatus.overdue).label("overdue"),
+            func.coalesce(
+                func.sum(Deal.total).filter(Deal.status == DealStatus.active), 0
+            ).label("portfolio"),
+        )
+        .group_by(Deal.manager_id)
+        .subquery()
+    )
+    last_activity_sq = (
+        select(
+            AuditLog.user_id.label("user_id"),
+            func.max(AuditLog.created_at).label("last_activity"),
+        )
+        .where(AuditLog.user_id.isnot(None))
+        .group_by(AuditLog.user_id)
+        .subquery()
+    )
+
     rows = await db.execute(
         select(
             User.id,
             User.name,
-            func.count(Deal.id).filter(Deal.status == DealStatus.active).label("active"),
-            func.count(Deal.id).filter(Deal.status == DealStatus.overdue).label("overdue"),
-            func.coalesce(func.sum(Deal.total).filter(Deal.status == DealStatus.active), 0).label("portfolio"),
-            func.max(AuditLog.created_at).label("last_activity"),
+            func.coalesce(deal_stats.c.active, 0).label("active"),
+            func.coalesce(deal_stats.c.overdue, 0).label("overdue"),
+            func.coalesce(deal_stats.c.portfolio, 0).label("portfolio"),
+            last_activity_sq.c.last_activity,
         )
-        .outerjoin(Deal, and_(Deal.manager_id == User.id))
-        .outerjoin(AuditLog, AuditLog.user_id == User.id)
         .where(User.role == UserRole.manager)
         .where(User.is_active == True)  # noqa
-        .group_by(User.id, User.name)
+        .outerjoin(deal_stats, deal_stats.c.manager_id == User.id)
+        .outerjoin(last_activity_sq, last_activity_sq.c.user_id == User.id)
+        .order_by(User.name)
     )
     return [
         ManagerPortfolioItem(
             manager_id=r.id,
             manager_name=r.name,
-            active_deals=r.active or 0,
-            overdue_deals=r.overdue or 0,
+            active_deals=int(r.active or 0),
+            overdue_deals=int(r.overdue or 0),
             total_portfolio=Decimal(str(r.portfolio)),
             last_activity=r.last_activity,
         )

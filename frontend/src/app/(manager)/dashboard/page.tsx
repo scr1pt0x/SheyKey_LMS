@@ -11,7 +11,8 @@ import {
   DEAL_STATUS_LABELS,
   DEAL_STATUS_COLORS,
 } from "@/lib/utils";
-import { Home, Plus, Users, FileText, AlertTriangle, CreditCard } from "lucide-react";
+import { ManagerCashSection } from "@/components/features/manager/ManagerCashSection";
+import { Home, Plus, Users, AlertTriangle, CreditCard } from "lucide-react";
 
 export default function ManagerDashboardPage() {
   const { data, isLoading } = useManagerDashboard();
@@ -54,6 +55,8 @@ export default function ManagerDashboardPage() {
         <CashKpi label="Поступления сегодня" value={data.payments_today} />
         <CashKpi label="Поступления за месяц" value={data.payments_month} />
       </div>
+
+      <ManagerCashSection />
 
       {stats && (
         <div className="bg-white rounded-xl border p-4 text-sm text-gray-600">

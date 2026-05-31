@@ -31,20 +31,22 @@ def list_manager_filter(
     return None
 
 
-def require_client_access(client: Client, user: User) -> None:
-    if user.role == UserRole.manager and client.manager_id != user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=MANAGER_FORBIDDEN_DETAIL,
-        )
+async def require_client_access(
+    db: AsyncSession, client: Client, user: User
+) -> None:
+    del db, client
+    if user.role == UserRole.manager:
+        return
 
 
-def require_deal_access(deal: Deal, user: User) -> None:
-    if user.role == UserRole.manager and deal.manager_id != user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=MANAGER_FORBIDDEN_DETAIL,
-        )
+async def require_deal_access(
+    db: AsyncSession, deal: Deal, user: User
+) -> None:
+    if user.role != UserRole.manager:
+        return
+    if deal.manager_id == user.id:
+        return
+    await load_client_for_user(db, deal.client_id, user)
 
 
 async def require_sb_case_on_deal(
@@ -70,7 +72,7 @@ async def load_deal_for_user(
     deal = result.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
-    require_deal_access(deal, user)
+    await require_deal_access(db, deal, user)
     if user.role == UserRole.sb:
         await require_sb_case_on_deal(db, deal_id, user.id)
     return deal
@@ -83,7 +85,7 @@ async def load_client_for_user(
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(status_code=404, detail="Клиент не найден")
-    require_client_access(client, user)
+    await require_client_access(db, client, user)
     if user.role == UserRole.sb:
         if not await client_has_open_sb_case(db, client_id):
             raise HTTPException(

@@ -12,16 +12,6 @@ export function useDirectorDashboard() {
   });
 }
 
-export function usePortfolioByType() {
-  return useQuery({
-    queryKey: ["analytics", "portfolio"],
-    queryFn: async () => {
-      const { data } = await api.get("/api/director/analytics/portfolio");
-      return data;
-    },
-  });
-}
-
 export function useIssuanceDynamics(months = 12) {
   return useQuery({
     queryKey: ["analytics", "issuance", months],
@@ -99,9 +89,13 @@ export interface StaffUser {
   last_login: string | null;
 }
 
-export function useStaffUsers(role?: "manager" | "sb") {
+export function useStaffUsers(
+  role?: "manager" | "sb",
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ["staff-users", role ?? "all"],
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const params: Record<string, unknown> = { limit: 100 };
       if (role) params.role = role;
@@ -223,9 +217,20 @@ export function usePendingRestructurings() {
 export function useApproveDeal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ dealId, comment }: { dealId: string; comment?: string }) => {
+    mutationFn: async ({
+      dealId,
+      comment,
+      responsible_manager_id,
+    }: {
+      dealId: string;
+      comment?: string;
+      responsible_manager_id?: string;
+    }) => {
       const { data } = await api.post(`/api/director/approval/deals/${dealId}/approve`, {
         comment: comment ?? "",
+        ...(responsible_manager_id
+          ? { responsible_manager_id }
+          : {}),
       });
       return data;
     },

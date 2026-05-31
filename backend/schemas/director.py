@@ -100,6 +100,7 @@ class SettingUpdate(BaseModel):
 
 class ApprovalDecision(BaseModel):
     comment: str = Field(default="")
+    responsible_manager_id: uuid.UUID | None = None
 
 
 class RejectDecision(BaseModel):

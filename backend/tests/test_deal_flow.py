@@ -50,29 +50,17 @@ async def test_full_deal_flow(client):
     assert deal["status"] == "draft"
     assert len(deal["payment_schedules"]) == 12
 
-    # Step 4: Submit for approval
+    # Step 4: Manager activates deal (no director approval)
     resp = await client.post(f"/api/deals/{deal_id}/submit")
     assert resp.status_code == 200
+    assert resp.json()["status"] == "active"
 
-    # Step 5: Login as director and approve
-    resp = await client.post(
-        "/api/auth/login",
-        json={"phone": "+79000000001", "password": "Admin12345!"},
-    )
-    assert resp.status_code == 200
-
-    resp = await client.post(
-        f"/api/director/approval/deals/{deal_id}/approve",
-        json={"comment": "Approved"},
-    )
-    assert resp.status_code == 200
-
-    # Step 6: Verify deal is now active
+    # Step 5: Verify deal is active
     resp = await client.get(f"/api/deals/{deal_id}")
     assert resp.status_code == 200
     assert resp.json()["status"] == "active"
 
-    # Step 7: Login as manager and record a payment
+    # Step 6: Login as manager and record a payment
     await client.post(
         "/api/auth/login",
         json={"phone": "+79000000002", "password": "Manager12345!"},

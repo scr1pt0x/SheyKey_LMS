@@ -29,6 +29,8 @@ from backend.models import (  # noqa: F401
     Document,
     Expense,
     Investor,
+    ManagerCashEntry,
+    ManagerCashEntryKind,
     NotificationLog,
     OverdueCase,
     Payment,

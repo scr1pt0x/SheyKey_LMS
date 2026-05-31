@@ -15,6 +15,7 @@ from .investor import Investor
 from .expense import Expense, ExpenseCategory
 from .profit_period import ProfitPeriod, ProfitDistribution, ProfitPeriodStatus
 from .sb_work_session import SbWorkSession
+from .manager_cash_entry import ManagerCashEntry, ManagerCashEntryKind
 
 __all__ = [
     "User", "UserRole",
@@ -34,4 +35,5 @@ __all__ = [
     "Expense", "ExpenseCategory",
     "ProfitPeriod", "ProfitDistribution", "ProfitPeriodStatus",
     "SbWorkSession",
+    "ManagerCashEntry", "ManagerCashEntryKind",
 ]

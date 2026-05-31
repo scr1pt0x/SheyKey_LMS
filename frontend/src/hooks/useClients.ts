@@ -21,12 +21,13 @@ export interface ClientListParams {
   q?: string;
   kyc_status?: string;
   manager_id?: string;
+  /** portfolio — только свои (по умолчанию); all — все клиенты (форма сделки) */
+  scope?: "portfolio" | "all";
   is_archived?: boolean;
   limit?: number;
   offset?: number;
 }
 
-/** Lists are scoped on the server: managers see only their portfolio. */
 export function useClients(params: ClientListParams = {}) {
   return useQuery({
     queryKey: ["clients", params],
