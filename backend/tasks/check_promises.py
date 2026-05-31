@@ -3,16 +3,19 @@ Daily task: check unfulfilled payment promises and alert SB staff via in-app + W
 Runs at 09:00 Moscow time.
 """
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from loguru import logger
 from sqlalchemy import select
 
 from backend.core.database import AsyncSessionLocal
 from backend.models.overdue import OverdueCase, PaymentPromise
-from backend.models.user import User
+from backend.services.promise_notification_service import build_promise_alert
 from backend.services.push_service import notify_staff
 from backend.tasks.celery_app import celery_app
+
+MSK = ZoneInfo("Europe/Moscow")
 
 
 @celery_app.task(name="backend.tasks.check_promises.check_payment_promises")
@@ -21,7 +24,7 @@ def check_payment_promises() -> dict:
 
 
 async def _check_payment_promises() -> dict:
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(MSK).date()
     alerted = 0
 
     async with AsyncSessionLocal() as db:
@@ -36,12 +39,11 @@ async def _check_payment_promises() -> dict:
             if not case.sb_user_id:
                 continue
 
-            days_late = (today - promise.promised_date).days
-            title = "Обещание платежа не выполнено"
-            body = (
-                f"Дело #{str(case.id)[:8]} · "
-                f"Сумма: {promise.promised_amount} ₽ · "
-                f"Просрочено на {days_late} дн."
+            title, body = build_promise_alert(
+                promised_date=promise.promised_date,
+                promised_amount=promise.promised_amount,
+                case_id=case.id,
+                today=today,
             )
 
             try:

@@ -14,6 +14,7 @@ from .push_subscription import PushSubscription
 from .investor import Investor
 from .expense import Expense, ExpenseCategory
 from .profit_period import ProfitPeriod, ProfitDistribution, ProfitPeriodStatus
+from .sb_work_session import SbWorkSession
 
 __all__ = [
     "User", "UserRole",
@@ -32,4 +33,5 @@ __all__ = [
     "Investor",
     "Expense", "ExpenseCategory",
     "ProfitPeriod", "ProfitDistribution", "ProfitPeriodStatus",
+    "SbWorkSession",
 ]

@@ -38,6 +38,7 @@ from backend.models import (  # noqa: F401
     ProfitPeriod,
     PushSubscription,
     Restructuring,
+    SbWorkSession,
     StaffNotification,
     SystemSetting,
     User,

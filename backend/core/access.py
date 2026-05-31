@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.client import Client
 from backend.models.deal import Deal
+from backend.models.overdue import OverdueCase
 from backend.models.payment import Payment
 from backend.models.user import User, UserRole
+from backend.services.search_service import client_has_open_sb_case
 
 MANAGER_FORBIDDEN_DETAIL = "Нет доступа к этому ресурсу"
 CLIENT_NOT_IN_PORTFOLIO = "Клиент не в вашем портфеле"
@@ -45,6 +47,22 @@ def require_deal_access(deal: Deal, user: User) -> None:
         )
 
 
+async def require_sb_case_on_deal(
+    db: AsyncSession, deal_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    result = await db.execute(
+        select(OverdueCase.id).where(
+            OverdueCase.deal_id == deal_id,
+            OverdueCase.sb_user_id == user_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Дело по этой сделке не назначено вам",
+        )
+
+
 async def load_deal_for_user(
     db: AsyncSession, deal_id: uuid.UUID, user: User
 ) -> Deal:
@@ -53,6 +71,8 @@ async def load_deal_for_user(
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
     require_deal_access(deal, user)
+    if user.role == UserRole.sb:
+        await require_sb_case_on_deal(db, deal_id, user.id)
     return deal
 
 
@@ -64,6 +84,12 @@ async def load_client_for_user(
     if not client:
         raise HTTPException(status_code=404, detail="Клиент не найден")
     require_client_access(client, user)
+    if user.role == UserRole.sb:
+        if not await client_has_open_sb_case(db, client_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Клиент не передан в Службу Безопасности",
+            )
     return client
 
 

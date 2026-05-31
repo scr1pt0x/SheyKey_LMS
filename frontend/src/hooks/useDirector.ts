@@ -52,6 +52,25 @@ export function useSbPerformance() {
   });
 }
 
+export interface SbPresenceMember {
+  sb_user_id: string;
+  sb_name: string;
+  day_started_at: string | null;
+  last_seen_at: string | null;
+  is_online: boolean;
+}
+
+export function useSbPresence() {
+  return useQuery({
+    queryKey: ["sb-presence"],
+    queryFn: async () => {
+      const { data } = await api.get("/api/director/sb-presence");
+      return data as SbPresenceMember[];
+    },
+    refetchInterval: 60_000,
+  });
+}
+
 export interface SbStaffMember {
   id: string;
   name: string;

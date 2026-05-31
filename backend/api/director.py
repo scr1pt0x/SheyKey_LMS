@@ -28,6 +28,7 @@ from backend.models.overdue import ContactLog, OverdueCase, OverdueCaseStatus, P
 from backend.models.payment import Payment, PaymentSchedule
 from backend.models.restructuring import Restructuring, RestructuringStatus
 from backend.models.settings import SystemSetting
+from backend.models.sb_work_session import SbWorkSession
 from backend.models.user import User, UserRole
 from backend.schemas.common import PaginatedResponse
 from backend.schemas.director import (
@@ -41,6 +42,7 @@ from backend.schemas.director import (
     ReassignRequest,
     RejectDecision,
     SbPerformanceItem,
+    SbPresenceItem,
     SettingUpdate,
     TopDebtorItem,
 )
@@ -49,6 +51,7 @@ from backend.schemas.user import UserCreate, UserListResponse, UserResponse
 from backend.services.audit_service import AuditService
 from backend.core.security import hash_password
 from backend.services.push_service import notify_staff
+from backend.services.sb_presence_service import is_sb_online, moscow_today
 
 router = APIRouter(prefix="/api/director", tags=["director"])
 
@@ -252,14 +255,14 @@ async def sb_performance(
 
     items = []
     for r in results:
-        recovered = (
-            await db.execute(
-                select(func.coalesce(func.sum(PaymentPromise.promised_amount), 0))
-                .join(OverdueCase, PaymentPromise.case_id == OverdueCase.id)
-                .where(OverdueCase.sb_user_id == r.sb_user_id)
-                .where(PaymentPromise.is_fulfilled == True)  # noqa
-            )
-        ).scalar_one()
+        from backend.services.sb_metrics_service import sb_collected_amount
+
+        recovered = await sb_collected_amount(
+            db,
+            r.sb_user_id,
+            datetime(2000, 1, 1, tzinfo=timezone.utc),
+            datetime.now(timezone.utc),
+        )
 
         items.append(
             SbPerformanceItem(
@@ -271,6 +274,42 @@ async def sb_performance(
             )
         )
     return items
+
+
+@router.get("/sb-presence", response_model=list[SbPresenceItem])
+async def sb_presence(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("director")),
+) -> list[SbPresenceItem]:
+    today = moscow_today()
+    rows = await db.execute(
+        select(
+            User.id,
+            User.name,
+            SbWorkSession.started_at,
+            SbWorkSession.last_seen_at,
+        )
+        .outerjoin(
+            SbWorkSession,
+            and_(
+                SbWorkSession.user_id == User.id,
+                SbWorkSession.work_date == today,
+            ),
+        )
+        .where(User.role == UserRole.sb)
+        .where(User.is_active == True)  # noqa: E712
+        .order_by(User.name)
+    )
+    return [
+        SbPresenceItem(
+            sb_user_id=r.id,
+            sb_name=r.name,
+            day_started_at=r.started_at,
+            last_seen_at=r.last_seen_at,
+            is_online=is_sb_online(r.last_seen_at),
+        )
+        for r in rows.all()
+    ]
 
 
 @router.get("/analytics/avg-deal")

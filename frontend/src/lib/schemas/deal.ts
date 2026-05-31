@@ -30,6 +30,7 @@ export const dealCreateSchema = z
   .object({
     client_id: z.string().uuid("Выберите клиента"),
     type: z.enum(["murabaha", "ijara"]),
+    product_description: z.string().max(2000).optional().or(z.literal("")),
     murabaha: murabahaSchema.optional(),
     ijara: ijaraSchema.optional(),
   })

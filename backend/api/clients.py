@@ -109,7 +109,11 @@ async def get_client(
     current_user: User = Depends(require_role("manager", "sb", "director")),
 ) -> ClientResponse:
     client = await load_client_for_user(db, client_id, current_user)
-    return ClientResponse.model_validate(client)
+    manager = await db.get(User, client.manager_id)
+    resp = ClientResponse.model_validate(client)
+    return resp.model_copy(
+        update={"manager_name": manager.name if manager else None}
+    )
 
 
 @router.patch("/{client_id}", response_model=ClientResponse)

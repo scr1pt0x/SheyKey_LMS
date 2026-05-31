@@ -7,7 +7,7 @@ import api from "@/lib/axios";
 import { useAuthStore } from "@/store/auth";
 import { cn, ROLE_LABELS } from "@/lib/utils";
 import { NotificationBell } from "./NotificationBell";
-import { GlobalSearch } from "./GlobalSearch";
+import { ClientSearchField } from "./ClientSearchField";
 import {
   Users,
   FileText,
@@ -102,10 +102,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="text-sm font-medium mt-1">{user.name}</p>
         </div>
 
-        <div className="px-3 pb-2">
-          <GlobalSearch />
-        </div>
-
         <nav className="flex-1 py-4 overflow-y-auto">
           {roleItems.map((item) => (
             <Link
@@ -138,13 +134,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ── Mobile Top Bar (< md) ─────────────────────────────────────── */}
-      <div className="md:hidden fixed top-0 inset-x-0 z-40 bg-[#1a3a5c] text-white flex items-center px-4 h-14 gap-3">
-        <p className="font-bold flex-1 text-base">SheyKey LMS</p>
-        <NotificationBell />
+      <div className="md:hidden fixed top-0 inset-x-0 z-40 bg-[#1a3a5c] text-white flex flex-col">
+        <div className="flex items-center px-4 h-14 gap-3 shrink-0">
+          <p className="font-bold flex-1 text-base truncate">SheyKey LMS</p>
+          <NotificationBell />
+        </div>
+        {user.role === "sb" && (
+          <div className="px-3 pb-2 overflow-visible">
+            <ClientSearchField variant="sidebar" />
+          </div>
+        )}
       </div>
 
       {/* ── Main content ─────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-w-0 mt-14 md:mt-0 mb-20 md:mb-0">
+      <main
+        className={cn(
+          "flex-1 flex flex-col min-w-0 md:mt-0 mb-20 md:mb-0",
+          user.role === "sb" ? "mt-[7.5rem] md:mt-0" : "mt-14"
+        )}
+      >
         <div className="flex-1 p-4 md:p-6 max-w-7xl w-full mx-auto">{children}</div>
       </main>
 

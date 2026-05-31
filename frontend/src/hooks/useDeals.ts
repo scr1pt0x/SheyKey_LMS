@@ -26,6 +26,9 @@ export interface Deal {
   approved_by: string | null;
   approved_at: string | null;
   rejection_comment: string | null;
+  product_description?: string | null;
+  purchase_summary?: string | null;
+  manager_name?: string | null;
   created_at: string;
   updated_at: string;
   payment_schedules: ScheduleItem[];

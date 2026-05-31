@@ -11,6 +11,7 @@ import { formatCurrency, OVERDUE_STATUS_LABELS } from "@/lib/utils";
 import { toast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/axios";
 import { AlertTriangle } from "lucide-react";
+import { ClientSearchField } from "@/components/features/shared/ClientSearchField";
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-red-100 text-red-800",
@@ -34,6 +35,7 @@ export default function SbCasesContent() {
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
   const [redZoneOnly, setRedZoneOnly] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
   const takeCase = useTakeCase();
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export default function SbCasesContent() {
     amount_min: amountMin ? parseFloat(amountMin) : undefined,
     amount_max: amountMax ? parseFloat(amountMax) : undefined,
     red_zone_only: redZoneOnly || undefined,
+    q: searchQ.trim().length >= 2 ? searchQ.trim() : undefined,
   };
   if (queue === "unassigned") {
     queryParams.unassigned = true;
@@ -77,7 +80,17 @@ export default function SbCasesContent() {
         <h1 className="text-xl font-bold">Просрочники</h1>
       </div>
 
-      <div className="bg-white rounded-xl border p-4 flex flex-wrap gap-3">
+      <div className="bg-white rounded-xl border p-4 space-y-3">
+        <ClientSearchField
+          variant="page"
+          listOnly
+          value={searchQ}
+          onChange={(v) => {
+            setSearchQ(v);
+            setOffset(0);
+          }}
+        />
+        <div className="flex flex-wrap gap-3">
         <div className="flex rounded-lg border overflow-hidden text-sm">
           {(
             [
@@ -143,6 +156,7 @@ export default function SbCasesContent() {
           />
           Красная зона
         </label>
+        </div>
       </div>
 
       {isLoading ? (
@@ -155,7 +169,8 @@ export default function SbCasesContent() {
             {data?.items.map((c) => (
               <div key={c.id} className="bg-white rounded-xl border p-4">
                 <Link href={`/sb/cases/${c.id}`} className="block">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-[#1a3a5c]">{c.client_name ?? "—"}</p>
+                  <div className="flex items-center gap-2 flex-wrap mt-1">
                     <Badge className={STATUS_COLORS[c.status]}>
                       {OVERDUE_STATUS_LABELS[c.status]}
                     </Badge>
@@ -191,6 +206,7 @@ export default function SbCasesContent() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Клиент</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Статус</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Долг</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Дней просрочки</th>
@@ -201,6 +217,7 @@ export default function SbCasesContent() {
                 <tbody className="divide-y">
                   {data?.items.map((c) => (
                     <tr key={c.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium">{c.client_name ?? "—"}</td>
                       <td className="px-4 py-3">
                         <Badge className={STATUS_COLORS[c.status]}>{OVERDUE_STATUS_LABELS[c.status]}</Badge>
                         {c.is_red_zone && (

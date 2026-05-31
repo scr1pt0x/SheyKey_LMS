@@ -11,8 +11,18 @@ from backend.core.dependencies import get_client_ip, require_role
 from backend.models.payment import Payment, PaymentSchedule, PaymentStatus
 from backend.models.user import User
 from backend.schemas.common import PaginatedResponse
-from backend.schemas.payment import PaymentCreate, PaymentResponse
+from backend.schemas.payment import (
+    PaymentAllocateCreate,
+    PaymentAllocateResponse,
+    PaymentCreate,
+    PaymentResponse,
+)
 from backend.services.audit_service import AuditService
+from backend.services.overdue_case_service import refresh_overdue_case_after_payment
+from backend.services.payment_allocation_service import (
+    apply_amount_to_schedule,
+    schedule_remaining,
+)
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
@@ -22,7 +32,7 @@ async def record_payment(
     body: PaymentCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("manager", "director")),
+    current_user: User = Depends(require_role("manager", "director", "sb")),
 ) -> PaymentResponse:
     schedule = await db.get(PaymentSchedule, body.schedule_id)
     if not schedule:
@@ -31,30 +41,23 @@ async def record_payment(
     if schedule.status == PaymentStatus.paid:
         raise HTTPException(status_code=400, detail="Платёж уже полностью оплачен")
 
-    remaining = Decimal(str(schedule.amount)) - Decimal(str(schedule.paid_amount))
+    remaining = schedule_remaining(schedule)
     if body.amount > remaining:
         raise HTTPException(
             status_code=400,
             detail=f"Сумма платежа превышает остаток {remaining}",
         )
 
-    payment = Payment(
-        schedule_id=body.schedule_id,
+    payment = apply_amount_to_schedule(
+        schedule,
+        body.amount,
         deal_id=schedule.deal_id,
-        amount=body.amount,
         paid_at=body.paid_at,
         method=body.method,
-        notes=body.notes,
         recorded_by=current_user.id,
+        notes=body.notes,
     )
     db.add(payment)
-
-    new_paid = Decimal(str(schedule.paid_amount)) + body.amount
-    schedule.paid_amount = new_paid
-    if new_paid >= Decimal(str(schedule.amount)):
-        schedule.status = PaymentStatus.paid
-    else:
-        schedule.status = PaymentStatus.partial
 
     await AuditService.log(
         db=db,
@@ -69,9 +72,57 @@ async def record_payment(
         },
         ip=get_client_ip(request),
     )
+    await refresh_overdue_case_after_payment(db, schedule.deal_id)
     await db.commit()
     await db.refresh(payment)
     return PaymentResponse.model_validate(payment)
+
+
+@router.post("/allocate", response_model=PaymentAllocateResponse, status_code=status.HTTP_201_CREATED)
+async def allocate_payment(
+    body: PaymentAllocateCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("manager", "director", "sb")),
+) -> PaymentAllocateResponse:
+    from backend.services.payment_allocation_service import allocate_payment_across_schedules
+
+    await load_deal_for_user(db, body.deal_id, current_user)
+
+    payments = await allocate_payment_across_schedules(
+        db=db,
+        deal_id=body.deal_id,
+        total_amount=body.amount,
+        paid_at=body.paid_at,
+        method=body.method,
+        recorded_by=current_user.id,
+        notes=body.notes,
+    )
+
+    await AuditService.log(
+        db=db,
+        user_id=str(current_user.id),
+        action="PAYMENT_ALLOCATED",
+        entity="payments",
+        entity_id=None,
+        new_val={
+            "deal_id": str(body.deal_id),
+            "amount": str(body.amount),
+            "parts": len(payments),
+            "method": body.method.value,
+        },
+        ip=get_client_ip(request),
+    )
+    await refresh_overdue_case_after_payment(db, body.deal_id)
+    await db.commit()
+    for p in payments:
+        await db.refresh(p)
+
+    return PaymentAllocateResponse(
+        payments=[PaymentResponse.model_validate(p) for p in payments],
+        total_applied=body.amount,
+        deal_id=body.deal_id,
+    )
 
 
 @router.get("/deal/{deal_id}", response_model=PaginatedResponse[PaymentResponse])

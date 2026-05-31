@@ -14,6 +14,8 @@ export interface OverdueCase {
   updated_at: string;
   is_red_zone?: boolean;
   internal_notes?: string | null;
+  client_name?: string | null;
+  client_phone?: string | null;
 }
 
 export interface SbTodayWorkItem {
@@ -32,11 +34,25 @@ export interface SbCaseContext {
   client_id: string;
   client_name: string;
   client_phone: string | null;
+  manager_id: string;
+  manager_name: string;
   deal_type: string;
   deal_status: string;
   deal_total: string | number;
+  product_description: string | null;
+  purchase_summary: string;
   next_schedule_due_date: string | null;
   next_schedule_amount: string | number | null;
+  pending_schedules: PaymentScheduleBrief[];
+}
+
+export interface PaymentScheduleBrief {
+  id: string;
+  installment_number: number;
+  due_date: string;
+  amount: string;
+  paid_amount: string;
+  status: string;
 }
 
 export interface ContactLog {

@@ -49,3 +49,6 @@ class User(Base):
     calendar_tasks: Mapped[list["CalendarTask"]] = relationship(
         "CalendarTask", back_populates="user"
     )
+    sb_work_sessions: Mapped[list["SbWorkSession"]] = relationship(
+        "SbWorkSession", back_populates="user"
+    )

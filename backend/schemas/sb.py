@@ -23,6 +23,8 @@ class OverdueCaseResponse(BaseModel):
     updated_at: datetime
     is_red_zone: bool | None = None
     internal_notes: str | None = None
+    client_name: str | None = None
+    client_phone: str | None = None
 
 
 class CaseNotesUpdate(BaseModel):
@@ -125,15 +127,29 @@ class SbTodayWorkResponse(BaseModel):
     unassigned_top: list[SbTodayWorkItem]
 
 
+class PaymentScheduleBrief(BaseModel):
+    id: uuid.UUID
+    installment_number: int
+    due_date: date
+    amount: Decimal
+    paid_amount: Decimal
+    status: str
+
+
 class SbCaseContextResponse(BaseModel):
     client_id: uuid.UUID
     client_name: str
     client_phone: str | None
+    manager_id: uuid.UUID
+    manager_name: str
     deal_type: str
     deal_status: str
     deal_total: Decimal
+    product_description: str | None = None
+    purchase_summary: str
     next_schedule_due_date: date | None = None
     next_schedule_amount: Decimal | None = None
+    pending_schedules: list[PaymentScheduleBrief] = []
 
 
 class SbStatsResponse(BaseModel):

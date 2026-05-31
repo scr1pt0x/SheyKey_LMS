@@ -73,3 +73,16 @@ def test_require_deal_access_sb_any():
 
 def test_constants():
     assert CLIENT_NOT_IN_PORTFOLIO == "Клиент не в вашем портфеле"
+
+
+@pytest.mark.asyncio
+async def test_require_sb_case_on_deal_blocks_unassigned():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from backend.core.access import require_sb_case_on_deal
+
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
+    with pytest.raises(HTTPException) as exc:
+        await require_sb_case_on_deal(db, uuid.uuid4(), uuid.uuid4())
+    assert exc.value.status_code == 403

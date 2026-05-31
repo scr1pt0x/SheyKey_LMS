@@ -41,6 +41,7 @@ class ClientResponse(BaseModel):
     is_archived: bool
     notes: str | None
     tags: list | None
+    manager_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

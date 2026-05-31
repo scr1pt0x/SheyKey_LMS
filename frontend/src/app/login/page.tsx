@@ -9,11 +9,7 @@ import { loginSchema, LoginForm } from "@/lib/schemas/auth";
 import { useAuthStore } from "@/store/auth";
 import type { UserRole } from "@/store/auth";
 
-const ROLE_HOME: Record<UserRole, string> = {
-  manager: "/dashboard",
-  sb: "/sb/dashboard",
-  director: "/director/dashboard",
-};
+import { ROLE_HOME } from "@/lib/roleHome";
 
 export default function LoginPage() {
   const router = useRouter();

@@ -48,6 +48,14 @@ class SbPerformanceItem(BaseModel):
     recovered_amount: Decimal
 
 
+class SbPresenceItem(BaseModel):
+    sb_user_id: uuid.UUID
+    sb_name: str
+    day_started_at: datetime | None
+    last_seen_at: datetime | None
+    is_online: bool
+
+
 class ConversionFunnelResponse(BaseModel):
     draft: int
     pending: int

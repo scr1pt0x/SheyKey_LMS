@@ -4,11 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 
-const ROLE_HOME: Record<string, string> = {
-  manager: "/dashboard",
-  sb: "/sb/dashboard",
-  director: "/director/dashboard",
-};
+import { ROLE_HOME } from "@/lib/roleHome";
 
 export default function HomePage() {
   const user = useAuthStore((s) => s.user);

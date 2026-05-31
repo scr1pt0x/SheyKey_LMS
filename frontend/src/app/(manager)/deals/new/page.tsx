@@ -52,6 +52,8 @@ export default function NewDealPage() {
       client_id: data.client_id,
       type: data.type,
     };
+    const product = data.product_description?.trim();
+    if (product) payload.product_description = product;
 
     if (data.type === "murabaha" && data.murabaha) {
       payload.murabaha = {
@@ -96,6 +98,15 @@ export default function NewDealPage() {
               <option key={c.id} value={c.id}>{c.full_name} — {c.phone}</option>
             ))}
           </select>
+        </Field>
+
+        <Field label="Что купил (товар / предмет сделки)" error={errors.product_description?.message}>
+          <input
+            {...register("product_description")}
+            type="text"
+            placeholder="Например: iPhone 15, холодильник Samsung"
+            className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
+          />
         </Field>
 
         {/* Deal type */}

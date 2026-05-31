@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.core.database import get_db
-from backend.core.dependencies import get_client_ip, require_role
+from backend.core.dependencies import get_client_ip, get_current_user, require_role
 from backend.models.client import Client
 from backend.models.deal import Deal, DealStatus
 from backend.models.payment import PaymentSchedule, PaymentStatus
@@ -20,7 +20,7 @@ from backend.models.overdue import (
 )
 from backend.models.restructuring import Restructuring
 from backend.models.settings import SettingKey, SystemSetting
-from backend.models.user import User
+from backend.models.user import User, UserRole
 from backend.schemas.common import PaginatedResponse
 from backend.schemas.sb import (
     AssignCaseRequest,
@@ -31,6 +31,7 @@ from backend.schemas.sb import (
     OverdueCaseResponse,
     PaymentPromiseCreate,
     PaymentPromiseResponse,
+    PaymentScheduleBrief,
     RestructuringCreate,
     RestructuringResponse,
     SbCaseContextResponse,
@@ -41,8 +42,23 @@ from backend.schemas.sb import (
 )
 from backend.services.audit_service import AuditService
 from backend.services.push_service import notify_staff
+from backend.services.deal_display import deal_purchase_summary_from_deal
+from backend.services.overdue_case_service import refresh_overdue_case_after_payment
+from backend.services.sb_presence_service import record_sb_presence
 
-router = APIRouter(prefix="/api/sb", tags=["sb"])
+async def _track_sb_presence(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    if current_user.role == UserRole.sb:
+        await record_sb_presence(db, current_user.id)
+
+
+router = APIRouter(
+    prefix="/api/sb",
+    tags=["sb"],
+    dependencies=[Depends(_track_sb_presence)],
+)
 
 
 async def _get_red_zone_cutoff(db: AsyncSession) -> datetime:
@@ -69,6 +85,14 @@ async def _case_is_red_zone(
     return last_contact is None or last_contact < red_cutoff
 
 
+@router.post("/presence")
+async def sb_presence_ping(
+    current_user: User = Depends(require_role("sb")),
+) -> dict:
+    """Heartbeat from SB cabinet; presence is recorded by router dependency."""
+    return {"detail": "ok"}
+
+
 @router.get("/cases", response_model=PaginatedResponse[OverdueCaseResponse])
 async def list_cases(
     status_filter: OverdueCaseStatus | None = Query(None, alias="status"),
@@ -79,17 +103,27 @@ async def list_cases(
     amount_min: float | None = None,
     amount_max: float | None = None,
     red_zone_only: bool = False,
+    q: str | None = Query(None, min_length=2),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("sb", "director")),
 ) -> PaginatedResponse[OverdueCaseResponse]:
-    from backend.services.overdue_case_service import ensure_missing_overdue_cases
+    from backend.services.overdue_case_service import (
+        ensure_missing_overdue_cases,
+        refresh_open_cases_for_deals,
+    )
+    from backend.services.search_service import client_text_filter
 
     await ensure_missing_overdue_cases(db)
     await db.commit()
 
-    query = select(OverdueCase).where(OverdueCase.status != OverdueCaseStatus.closed)
+    query = (
+        select(OverdueCase, Client.full_name, Client.phone)
+        .join(Deal, OverdueCase.deal_id == Deal.id)
+        .join(Client, Deal.client_id == Client.id)
+        .where(OverdueCase.status != OverdueCaseStatus.closed)
+    )
     if status_filter:
         query = query.where(OverdueCase.status == status_filter)
     if unassigned:
@@ -104,28 +138,39 @@ async def list_cases(
         query = query.where(OverdueCase.total_debt >= amount_min)
     if amount_max is not None:
         query = query.where(OverdueCase.total_debt <= amount_max)
+    if q:
+        query = query.where(client_text_filter(q))
 
     query = query.order_by(OverdueCase.total_debt.desc(), OverdueCase.days_overdue.desc())
 
     red_cutoff = await _get_red_zone_cutoff(db)
 
     if red_zone_only:
-        all_rows = (await db.execute(query)).scalars().all()
+        all_rows = (await db.execute(query)).all()
         filtered = []
-        for c in all_rows:
-            if await _case_is_red_zone(db, c.id, c.status, red_cutoff):
-                filtered.append(c)
+        for case, client_name, client_phone in all_rows:
+            if await _case_is_red_zone(db, case.id, case.status, red_cutoff):
+                filtered.append((case, client_name, client_phone))
         total = len(filtered)
-        cases = filtered[offset : offset + limit]
+        page_rows = filtered[offset : offset + limit]
     else:
         total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
-        rows = await db.execute(query.limit(limit).offset(offset))
-        cases = rows.scalars().all()
+        page_rows = (await db.execute(query.limit(limit).offset(offset))).all()
+
+    deal_ids = list({case.deal_id for case, _, _ in page_rows})
+    if deal_ids:
+        await refresh_open_cases_for_deals(db, deal_ids)
+        await db.commit()
 
     items = []
-    for c in cases:
-        resp = OverdueCaseResponse.model_validate(c)
-        resp.is_red_zone = await _case_is_red_zone(db, c.id, c.status, red_cutoff)
+    for case, client_name, client_phone in page_rows:
+        await db.refresh(case)
+        if case.status == OverdueCaseStatus.closed:
+            continue
+        resp = OverdueCaseResponse.model_validate(case)
+        resp.is_red_zone = await _case_is_red_zone(db, case.id, case.status, red_cutoff)
+        resp.client_name = client_name
+        resp.client_phone = client_phone
         items.append(resp)
 
     return PaginatedResponse(
@@ -145,6 +190,9 @@ async def get_case(
     case = await db.get(OverdueCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Дело не найдено")
+    await refresh_overdue_case_after_payment(db, case.deal_id)
+    await db.refresh(case)
+    await db.commit()
     return OverdueCaseResponse.model_validate(case)
 
 
@@ -452,17 +500,13 @@ async def sb_dashboard(
         )
     ).scalar_one()
 
-    # Recovered this month (fulfilled promises)
-    from datetime import date as date_cls
+    # Collected this month: payments recorded by SB (not promise flags)
+    from backend.services.sb_metrics_service import sb_collected_amount
+
     month_start = today.replace(day=1)
-    recovered_result = await db.execute(
-        select(func.coalesce(func.sum(PaymentPromise.promised_amount), 0))
-        .join(OverdueCase, PaymentPromise.case_id == OverdueCase.id)
-        .where(OverdueCase.sb_user_id == user_id)
-        .where(PaymentPromise.is_fulfilled == True)  # noqa
-        .where(PaymentPromise.updated_at >= datetime.combine(month_start, datetime.min.time()))
-    )
-    recovered = recovered_result.scalar_one() or Decimal("0")
+    month_start_dt = datetime.combine(month_start, datetime.min.time(), tzinfo=timezone.utc)
+    now_dt = datetime.now(timezone.utc)
+    recovered = await sb_collected_amount(db, user_id, month_start_dt, now_dt)
 
     # Red zone: cases without contact in N days
     red_zone_setting = (
@@ -622,8 +666,18 @@ async def get_case_context(
     case = await db.get(OverdueCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Дело не найдено")
+    if current_user.role == UserRole.sb and case.sb_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Дело не назначено вам")
 
-    deal = await db.get(Deal, case.deal_id)
+    await refresh_overdue_case_after_payment(db, case.deal_id)
+    await db.refresh(case)
+
+    deal_row = await db.execute(
+        select(Deal)
+        .where(Deal.id == case.deal_id)
+        .options(selectinload(Deal.params), selectinload(Deal.manager))
+    )
+    deal = deal_row.scalar_one_or_none()
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
 
@@ -641,16 +695,44 @@ async def get_case_context(
         )
     ).scalar_one_or_none()
 
-    return SbCaseContextResponse(
+    pending_rows = (
+        await db.execute(
+            select(PaymentSchedule)
+            .where(PaymentSchedule.deal_id == deal.id)
+            .where(PaymentSchedule.status.in_([PaymentStatus.pending, PaymentStatus.overdue, PaymentStatus.partial]))
+            .order_by(PaymentSchedule.due_date)
+        )
+    ).scalars().all()
+
+    deal_manager = deal.manager
+
+    resp = SbCaseContextResponse(
         client_id=client.id,
         client_name=client.full_name,
         client_phone=client.phone,
+        manager_id=deal.manager_id,
+        manager_name=deal_manager.name if deal_manager else "—",
         deal_type=deal.type.value,
         deal_status=deal.status.value,
         deal_total=Decimal(str(deal.total)),
+        product_description=deal.product_description,
+        purchase_summary=deal_purchase_summary_from_deal(deal),
         next_schedule_due_date=next_schedule.due_date if next_schedule else None,
         next_schedule_amount=Decimal(str(next_schedule.amount)) if next_schedule else None,
+        pending_schedules=[
+            PaymentScheduleBrief(
+                id=s.id,
+                installment_number=s.installment_number,
+                due_date=s.due_date,
+                amount=Decimal(str(s.amount)),
+                paid_amount=Decimal(str(s.paid_amount)),
+                status=s.status.value,
+            )
+            for s in pending_rows
+        ],
     )
+    await db.commit()
+    return resp
 
 
 @router.get("/stats", response_model=SbStatsResponse)
@@ -677,16 +759,9 @@ async def sb_stats(
         )
     ).scalar_one()
 
-    fulfilled_amount = (
-        await db.execute(
-            select(func.coalesce(func.sum(PaymentPromise.promised_amount), 0))
-            .join(OverdueCase, PaymentPromise.case_id == OverdueCase.id)
-            .where(OverdueCase.sb_user_id == user_id)
-            .where(PaymentPromise.is_fulfilled == True)  # noqa: E712
-            .where(PaymentPromise.updated_at >= start_dt)
-            .where(PaymentPromise.updated_at <= end_dt)
-        )
-    ).scalar_one()
+    from backend.services.sb_metrics_service import sb_collected_amount
+
+    fulfilled_amount = await sb_collected_amount(db, user_id, start_dt, end_dt)
 
     avg_days = (
         await db.execute(

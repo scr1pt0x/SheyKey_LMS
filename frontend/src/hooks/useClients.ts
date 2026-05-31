@@ -4,6 +4,7 @@ import api from "@/lib/axios";
 export interface Client {
   id: string;
   manager_id: string;
+  manager_name?: string | null;
   full_name: string;
   phone: string;
   passport: string | null;

@@ -51,7 +51,7 @@ export default function SbStatsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <StatCard label="Закрыто дел" value={String(data.cases_closed)} />
           <StatCard
-            label="Исполнено обещаний"
+            label="Взыскано платежей"
             value={formatCurrency(data.promises_fulfilled_amount)}
           />
           {data.avg_days_overdue_closed != null && (

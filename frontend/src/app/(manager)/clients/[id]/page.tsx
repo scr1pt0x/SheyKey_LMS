@@ -147,6 +147,9 @@ export default function ClientDetailPage() {
         </InfoItem>
         <InfoItem label="Паспорт">{client.passport || "—"}</InfoItem>
         <InfoItem label="Адрес">{client.address || "—"}</InfoItem>
+        <InfoItem label="Менеджер">
+          {client.manager_name ?? "—"}
+        </InfoItem>
         <InfoItem label="Добавлен">{formatDate(client.created_at)}</InfoItem>
         <InfoItem label="Статус">
           {client.is_archived ? (
@@ -237,9 +240,12 @@ export default function ClientDetailPage() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="font-medium">{DEAL_TYPE_LABELS[deal.type]}</span>
-                  <span className="text-gray-500 text-sm ml-2">
-                    {formatCurrency(deal.total)}
+                  <span className="font-medium block">
+                    {deal.purchase_summary ?? DEAL_TYPE_LABELS[deal.type]}
+                  </span>
+                  <span className="text-gray-500 text-sm">
+                    {DEAL_TYPE_LABELS[deal.type]} · {formatCurrency(deal.total)}
+                    {deal.manager_name && ` · ${deal.manager_name}`}
                   </span>
                 </div>
                 <Badge className={DEAL_STATUS_COLORS[deal.status]}>

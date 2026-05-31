@@ -31,6 +31,7 @@ from backend.schemas.deal import (
     ScheduleItemResponse,
 )
 from backend.services.audit_service import AuditService
+from backend.services.deal_display import deal_purchase_summary, deal_purchase_summary_from_deal
 from backend.services.payment_calculator import generate_schedule
 from backend.services.push_service import notify_staff
 
@@ -39,6 +40,26 @@ router = APIRouter(prefix="/api/deals", tags=["deals"])
 
 def _deal_params_to_dict(deal: Deal) -> dict:
     return {p.key: p.value for p in deal.params}
+
+
+async def _manager_names_by_id(db: AsyncSession, manager_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not manager_ids:
+        return {}
+    rows = await db.execute(select(User.id, User.name).where(User.id.in_(manager_ids)))
+    return {row.id: row.name for row in rows.all()}
+
+
+def _build_deal_list_item(deal: Deal, manager_name: str | None) -> DealListItem:
+    params = _deal_params_to_dict(deal) if deal.params else None
+    base = DealListItem.model_validate(deal)
+    return base.model_copy(
+        update={
+            "manager_name": manager_name,
+            "purchase_summary": deal_purchase_summary(
+                deal.type, deal.principal, deal.product_description, params
+            ),
+        }
+    )
 
 
 async def _create_schedules(
@@ -66,7 +87,7 @@ async def list_deals(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("manager", "sb", "director")),
+    current_user: User = Depends(require_role("manager", "director")),
 ) -> PaginatedResponse[DealListItem]:
     query = select(Deal)
 
@@ -85,11 +106,17 @@ async def list_deals(
         query = query.where(Deal.start_date <= date_to)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
-    rows = await db.execute(query.order_by(Deal.created_at.desc()).limit(limit).offset(offset))
+    rows = await db.execute(
+        query.options(selectinload(Deal.params))
+        .order_by(Deal.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     deals = rows.scalars().all()
+    names = await _manager_names_by_id(db, {d.manager_id for d in deals})
 
     return PaginatedResponse(
-        items=[DealListItem.model_validate(d) for d in deals],
+        items=[_build_deal_list_item(d, names.get(d.manager_id)) for d in deals],
         total=total,
         limit=limit,
         offset=offset,
@@ -146,6 +173,7 @@ async def create_deal(
         manager_id=current_user.id,
         type=body.type,
         status=DealStatus.draft,
+        product_description=body.product_description,
         principal=principal,
         markup=markup,
         total=total,
@@ -179,7 +207,11 @@ async def create_deal(
     result = await db.execute(
         select(Deal)
         .where(Deal.id == deal.id)
-        .options(selectinload(Deal.payment_schedules))
+        .options(
+            selectinload(Deal.payment_schedules),
+            selectinload(Deal.params),
+            selectinload(Deal.manager),
+        )
     )
     deal = result.scalar_one()
     return _build_deal_response(deal)
@@ -189,12 +221,16 @@ async def create_deal(
 async def get_deal(
     deal_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("manager", "sb", "director")),
+    current_user: User = Depends(require_role("manager", "director")),
 ) -> DealResponse:
     result = await db.execute(
         select(Deal)
         .where(Deal.id == deal_id)
-        .options(selectinload(Deal.payment_schedules), selectinload(Deal.params))
+        .options(
+            selectinload(Deal.payment_schedules),
+            selectinload(Deal.params),
+            selectinload(Deal.manager),
+        )
     )
     deal = result.scalar_one_or_none()
     if not deal:
@@ -225,6 +261,9 @@ async def update_deal(
             status_code=400,
             detail="Редактирование сделки возможно только до её одобрения",
         )
+
+    if body.product_description is not None:
+        deal.product_description = body.product_description or None
 
     if body.murabaha and deal.type == DealType.murabaha:
         p = body.murabaha
@@ -260,7 +299,11 @@ async def update_deal(
     result = await db.execute(
         select(Deal)
         .where(Deal.id == deal.id)
-        .options(selectinload(Deal.payment_schedules))
+        .options(
+            selectinload(Deal.payment_schedules),
+            selectinload(Deal.params),
+            selectinload(Deal.manager),
+        )
     )
     deal = result.scalar_one()
     return _build_deal_response(deal)
@@ -394,6 +437,9 @@ def _build_deal_response(deal: Deal) -> DealResponse:
         approved_by=deal.approved_by,
         approved_at=deal.approved_at,
         rejection_comment=deal.rejection_comment,
+        product_description=deal.product_description,
+        purchase_summary=deal_purchase_summary_from_deal(deal),
+        manager_name=deal.manager.name if deal.manager else None,
         created_at=deal.created_at,
         updated_at=deal.updated_at,
         payment_schedules=schedules,

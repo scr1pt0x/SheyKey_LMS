@@ -7,11 +7,11 @@ import api from "@/lib/axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDateTime, OVERDUE_STATUS_LABELS } from "@/lib/utils";
-import { useSbPerformance, useSbStaff } from "@/hooks/useDirector";
+import { useSbPerformance, useSbPresence, useSbStaff } from "@/hooks/useDirector";
 import { useAssignCase } from "@/hooks/useSb";
 import { toast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/axios";
-import { AlertTriangle, RefreshCw, Shield } from "lucide-react";
+import { AlertTriangle, Clock, RefreshCw, Shield } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-red-100 text-red-800",
@@ -70,6 +70,7 @@ export default function SbControlPage() {
   });
 
   const { data: performance } = useSbPerformance();
+  const { data: presence = [], isLoading: presenceLoading } = useSbPresence();
   const { data: sbStaff = [] } = useSbStaff();
   const assignCase = useAssignCase();
 
@@ -103,6 +104,52 @@ export default function SbControlPage() {
         >
           <RefreshCw size={16} /> Обновить дела СБ
         </Button>
+      </div>
+
+      {/* SB presence today */}
+      <div className="bg-white rounded-xl border p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock size={18} className="text-[#1a3a5c]" />
+          <h2 className="font-semibold text-sm">Присутствие сегодня</h2>
+        </div>
+        {presenceLoading ? (
+          <p className="text-sm text-gray-500">Загрузка…</p>
+        ) : presence.length === 0 ? (
+          <p className="text-sm text-gray-500">Нет активных сотрудников СБ</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="pb-2 pr-4 font-medium">Сотрудник</th>
+                  <th className="pb-2 pr-4 font-medium">Начало дня</th>
+                  <th className="pb-2 font-medium">Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                {presence.map((p) => (
+                  <tr key={p.sb_user_id} className="border-b last:border-0">
+                    <td className="py-2.5 pr-4 font-medium">{p.sb_name}</td>
+                    <td className="py-2.5 pr-4">
+                      {p.day_started_at ? formatDateTime(p.day_started_at) : "Не начинал"}
+                    </td>
+                    <td className="py-2.5">
+                      {p.is_online ? (
+                        <Badge className="bg-green-100 text-green-800 border-0">На работе</Badge>
+                      ) : p.last_seen_at ? (
+                        <span className="text-gray-600">
+                          Ушёл: {formatDateTime(p.last_seen_at)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* SB performance summary */}

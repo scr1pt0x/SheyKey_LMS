@@ -64,9 +64,17 @@ export default function DealDetailPage() {
         <Link href="/deals">
           <Button variant="ghost" size="icon"><ArrowLeft size={20} /></Button>
         </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold">{DEAL_TYPE_LABELS[deal.type]}</h1>
-          <Badge className={DEAL_STATUS_COLORS[deal.status]}>{DEAL_STATUS_LABELS[deal.status]}</Badge>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold truncate">
+            {deal.purchase_summary ?? DEAL_TYPE_LABELS[deal.type]}
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {DEAL_TYPE_LABELS[deal.type]} · {formatCurrency(deal.total)}
+            {deal.manager_name && ` · оформил ${deal.manager_name}`}
+          </p>
+          <Badge className={`${DEAL_STATUS_COLORS[deal.status]} mt-1`}>
+            {DEAL_STATUS_LABELS[deal.status]}
+          </Badge>
         </div>
         <div className="flex gap-2">
           {deal.status === "draft" && (

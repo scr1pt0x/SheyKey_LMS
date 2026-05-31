@@ -15,6 +15,14 @@ class PaymentCreate(BaseModel):
     notes: str | None = None
 
 
+class PaymentAllocateCreate(BaseModel):
+    deal_id: uuid.UUID
+    amount: Decimal = Field(..., gt=0)
+    paid_at: datetime
+    method: PaymentMethod
+    notes: str | None = None
+
+
 class PaymentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -29,6 +37,12 @@ class PaymentResponse(BaseModel):
     recorded_by: uuid.UUID
     notes: str | None
     created_at: datetime
+
+
+class PaymentAllocateResponse(BaseModel):
+    payments: list[PaymentResponse]
+    total_applied: Decimal
+    deal_id: uuid.UUID
 
 
 class PresignedUrlRequest(BaseModel):

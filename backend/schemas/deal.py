@@ -25,6 +25,7 @@ class IjaraParams(BaseModel):
 class DealCreate(BaseModel):
     client_id: uuid.UUID
     type: DealType
+    product_description: str | None = Field(None, max_length=2000)
     murabaha: MurabahaParams | None = None
     ijara: IjaraParams | None = None
 
@@ -38,6 +39,7 @@ class DealCreate(BaseModel):
 
 
 class DealUpdate(BaseModel):
+    product_description: str | None = Field(None, max_length=2000)
     murabaha: MurabahaParams | None = None
     ijara: IjaraParams | None = None
 
@@ -71,6 +73,9 @@ class DealResponse(BaseModel):
     approved_by: uuid.UUID | None
     approved_at: datetime | None
     rejection_comment: str | None
+    product_description: str | None = None
+    purchase_summary: str | None = None
+    manager_name: str | None = None
     created_at: datetime
     updated_at: datetime
     payment_schedules: list[ScheduleItemResponse] = []
@@ -87,6 +92,9 @@ class DealListItem(BaseModel):
     total: Decimal
     duration_months: int
     start_date: date | None
+    product_description: str | None = None
+    purchase_summary: str | None = None
+    manager_name: str | None = None
     created_at: datetime
 
 
