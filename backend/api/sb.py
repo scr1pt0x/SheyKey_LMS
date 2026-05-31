@@ -18,7 +18,6 @@ from backend.models.overdue import (
     OverdueCaseStatus,
     PaymentPromise,
 )
-from backend.models.restructuring import Restructuring
 from backend.models.settings import SettingKey, SystemSetting
 from backend.models.user import User, UserRole
 from backend.schemas.common import PaginatedResponse
@@ -32,8 +31,6 @@ from backend.schemas.sb import (
     PaymentPromiseCreate,
     PaymentPromiseResponse,
     PaymentScheduleBrief,
-    RestructuringCreate,
-    RestructuringResponse,
     SbCaseContextResponse,
     SbDashboardResponse,
     SbStatsResponse,
@@ -413,40 +410,6 @@ async def get_promises(
         .order_by(PaymentPromise.promised_date)
     )
     return [PaymentPromiseResponse.model_validate(p) for p in rows.scalars().all()]
-
-
-@router.post("/cases/{case_id}/restructure", response_model=RestructuringResponse)
-async def request_restructure(
-    case_id: uuid.UUID,
-    body: RestructuringCreate,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("sb", "director")),
-) -> RestructuringResponse:
-    case = await db.get(OverdueCase, case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Дело не найдено")
-
-    restructuring = Restructuring(
-        deal_id=case.deal_id,
-        case_id=case_id,
-        initiated_by=current_user.id,
-        reason=body.reason,
-        new_schedule=body.new_schedule,
-    )
-    db.add(restructuring)
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="RESTRUCTURE_REQUEST",
-        entity="restructurings",
-        entity_id=None,
-        new_val={"case_id": str(case_id), "reason": body.reason},
-        ip=get_client_ip(request),
-    )
-    await db.commit()
-    await db.refresh(restructuring)
-    return RestructuringResponse.model_validate(restructuring)
 
 
 @router.get("/dashboard", response_model=SbDashboardResponse)

@@ -3,13 +3,10 @@
 import Link from "next/link";
 import { useManagerDashboard, useManagerStats } from "@/hooks/useManager";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   formatCurrency,
   formatDate,
   DEAL_TYPE_LABELS,
-  DEAL_STATUS_LABELS,
-  DEAL_STATUS_COLORS,
 } from "@/lib/utils";
 import { ManagerCashSection } from "@/components/features/manager/ManagerCashSection";
 import { Home, Plus, Users, AlertTriangle, CreditCard } from "lucide-react";
@@ -43,10 +40,9 @@ export default function ManagerDashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Kpi label="Активные сделки" value={data.active_deals} />
         <Kpi label="Просрочено" value={data.overdue_deals} warn={data.overdue_deals > 0} />
-        <Kpi label="На согласовании" value={data.pending_deals} />
         <Kpi label="Черновики" value={data.draft_deals} />
       </div>
 
@@ -65,14 +61,6 @@ export default function ManagerDashboardPage() {
             <strong>{formatCurrency(stats.payments_collected)}</strong>.
           </p>
           <p className="text-xs text-gray-400 mt-1">{stats.bonus_note}</p>
-        </div>
-      )}
-
-      {data.clients_kyc_pending > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-          <Link href="/clients?kyc=pending" className="text-sm font-medium text-yellow-800 hover:underline">
-            KYC на проверке: {data.clients_kyc_pending} клиент(ов) →
-          </Link>
         </div>
       )}
 
@@ -96,23 +84,6 @@ export default function ManagerDashboardPage() {
             <Link href="/deals?status=overdue" className="text-xs text-[#1a3a5c] hover:underline mt-2 inline-block">
               Все просроченные →
             </Link>
-          )}
-        </Section>
-
-        <Section title="На согласовании">
-          {data.pending_deals_list.length === 0 ? (
-            <p className="text-sm text-gray-500">Нет сделок в ожидании</p>
-          ) : (
-            <ul className="space-y-2">
-              {data.pending_deals_list.map((d) => (
-                <li key={d.id}>
-                  <Link href={`/deals/${d.id}`} className="flex justify-between items-center hover:bg-gray-50 rounded-lg p-2 -mx-2">
-                    <Badge className={DEAL_STATUS_COLORS[d.status]}>{DEAL_STATUS_LABELS[d.status]}</Badge>
-                    <span className="text-sm font-medium">{formatCurrency(d.total)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
           )}
         </Section>
 

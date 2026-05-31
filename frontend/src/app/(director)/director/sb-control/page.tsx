@@ -7,7 +7,7 @@ import api from "@/lib/axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDateTime, OVERDUE_STATUS_LABELS } from "@/lib/utils";
-import { useSbPerformance, useSbPresence, useSbStaff } from "@/hooks/useDirector";
+import { useSbPerformance, useSbPresence, useSbStaff, useTopDebtors } from "@/hooks/useDirector";
 import { useAssignCase } from "@/hooks/useSb";
 import { toast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/axios";
@@ -70,6 +70,7 @@ export default function SbControlPage() {
   });
 
   const { data: performance } = useSbPerformance();
+  const { data: topDebtors } = useTopDebtors(15);
   const { data: presence = [], isLoading: presenceLoading } = useSbPresence();
   const { data: sbStaff = [] } = useSbStaff();
   const assignCase = useAssignCase();
@@ -174,6 +175,42 @@ export default function SbControlPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {topDebtors && topDebtors.length > 0 && (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <div className="p-4 border-b">
+            <h2 className="font-semibold">Топ должников (дела СБ)</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Клиент</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Долг</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Дней</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Статус дела</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {(topDebtors as { client_name: string; deal_id: string; total_debt: string; days_overdue: number; sb_status: string | null }[]).map((d) => (
+                  <tr key={d.deal_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium">{d.client_name}</td>
+                    <td className="px-4 py-3 font-semibold text-red-600">{formatCurrency(d.total_debt)}</td>
+                    <td className="px-4 py-3">{d.days_overdue}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      {d.sb_status ? (
+                        <Badge className="bg-gray-100 text-gray-700">
+                          {OVERDUE_STATUS_LABELS[d.sb_status] ?? d.sb_status}
+                        </Badge>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

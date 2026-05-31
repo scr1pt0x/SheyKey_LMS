@@ -469,6 +469,28 @@ async def calculate_period(
     return _build_period_response(result.scalar_one())
 
 
+@router.delete("/periods/{period_id}")
+async def delete_period(
+    period_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("director")),
+) -> dict:
+    period = await db.get(ProfitPeriod, period_id)
+    if not period:
+        raise HTTPException(status_code=404, detail="Период не найден")
+    if period.status != ProfitPeriodStatus.draft:
+        raise HTTPException(
+            status_code=400,
+            detail="Удалить можно только черновик периода",
+        )
+
+    await _delete_period_distributions(db, period_id)
+    await db.delete(period)
+    await db.commit()
+    return {"detail": "Черновик периода удалён"}
+
+
 @router.post("/periods/{period_id}/approve")
 async def approve_period(
     period_id: uuid.UUID,

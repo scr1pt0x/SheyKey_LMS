@@ -10,13 +10,11 @@ def test_manager_dashboard_response_defaults():
     data = ManagerDashboardResponse(
         active_deals=1,
         overdue_deals=0,
-        pending_deals=2,
         draft_deals=1,
         portfolio_active_total=Decimal("100000"),
         payments_today=Decimal("0"),
         payments_week=Decimal("5000"),
         payments_month=Decimal("5000"),
-        clients_kyc_pending=3,
         schedules_today=[],
         schedules_week=[],
     )

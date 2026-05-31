@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.access import list_manager_filter, load_client_for_user
 from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, get_current_user, require_role
-from backend.models.client import Client, KycStatus
+from backend.models.client import Client
 from backend.models.notification import NotificationLog
 from backend.models.user import User, UserRole
 from backend.schemas.client import (
@@ -16,7 +16,6 @@ from backend.schemas.client import (
     ClientListItem,
     ClientResponse,
     ClientUpdate,
-    KycUpdate,
     NoteAddRequest,
 )
 from backend.schemas.common import PaginatedResponse
@@ -28,7 +27,6 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 @router.get("", response_model=PaginatedResponse[ClientListItem])
 async def list_clients(
     q: str | None = Query(None, description="Search by name, phone or passport"),
-    kyc_status: KycStatus | None = None,
     manager_id: uuid.UUID | None = None,
     scope: Literal["portfolio", "all"] = Query(
         "portfolio",
@@ -51,8 +49,6 @@ async def list_clients(
                 Client.passport.ilike(like),
             )
         )
-    if kyc_status:
-        query = query.where(Client.kyc_status == kyc_status)
     if current_user.role == UserRole.manager:
         if scope == "portfolio":
             query = query.where(Client.manager_id == current_user.id)
@@ -177,34 +173,6 @@ async def archive_client(
         action="ARCHIVE",
         entity="clients",
         entity_id=str(client.id),
-        ip=get_client_ip(request),
-    )
-    await db.commit()
-    await db.refresh(client)
-    return ClientResponse.model_validate(client)
-
-
-@router.patch("/{client_id}/kyc", response_model=ClientResponse)
-async def update_kyc(
-    client_id: uuid.UUID,
-    body: KycUpdate,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("manager", "director")),
-) -> ClientResponse:
-    client = await load_client_for_user(db, client_id, current_user)
-
-    old_status = client.kyc_status
-    client.kyc_status = body.kyc_status
-
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="KYC_UPDATE",
-        entity="clients",
-        entity_id=str(client.id),
-        old_val={"kyc_status": old_status.value},
-        new_val={"kyc_status": body.kyc_status.value},
         ip=get_client_ip(request),
     )
     await db.commit()

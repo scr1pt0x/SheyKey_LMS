@@ -17,7 +17,7 @@ export default function SbStatsPage() {
   const { data, isLoading } = useSbStats(dateFrom, dateTo);
 
   return (
-    <div className="space-y-5 max-w-lg">
+    <div className="space-y-5 w-full">
       <h1 className="text-xl font-bold flex items-center gap-2">
         <BarChart2 size={22} className="text-[#1a3a5c]" /> Моя работа
       </h1>

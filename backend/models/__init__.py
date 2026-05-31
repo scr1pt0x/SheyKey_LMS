@@ -1,9 +1,8 @@
 from .user import User, UserRole
-from .client import Client, KycStatus
+from .client import Client
 from .deal import Deal, DealType, DealStatus, DealParam
 from .payment import PaymentSchedule, Payment, PaymentStatus, PaymentMethod
 from .overdue import OverdueCase, OverdueCaseStatus, ContactLog, ContactType, PaymentPromise
-from .restructuring import Restructuring, RestructuringStatus
 from .document import Document, DocumentEntityType, DocumentType
 from .notification import NotificationLog, NotificationChannel, NotificationStatus
 from .settings import SystemSetting
@@ -19,11 +18,10 @@ from .manager_cash_entry import ManagerCashEntry, ManagerCashEntryKind
 
 __all__ = [
     "User", "UserRole",
-    "Client", "KycStatus",
+    "Client",
     "Deal", "DealType", "DealStatus", "DealParam",
     "PaymentSchedule", "Payment", "PaymentStatus", "PaymentMethod",
     "OverdueCase", "OverdueCaseStatus", "ContactLog", "ContactType", "PaymentPromise",
-    "Restructuring", "RestructuringStatus",
     "Document", "DocumentEntityType", "DocumentType",
     "NotificationLog", "NotificationChannel", "NotificationStatus",
     "SystemSetting",

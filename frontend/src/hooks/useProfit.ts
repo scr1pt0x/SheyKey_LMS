@@ -167,6 +167,17 @@ export function useApprovePeriod() {
   });
 }
 
+export function useDeleteProfitPeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (periodId: string) => {
+      const { data } = await api.delete(`/api/director/profit/periods/${periodId}`);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["profit-periods"] }),
+  });
+}
+
 function zodArray<T>(schema: { parse: (v: unknown) => T }, data: unknown): T[] {
   if (!Array.isArray(data)) return [];
   return data.map((item) => schema.parse(item));

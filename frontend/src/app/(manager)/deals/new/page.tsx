@@ -93,7 +93,7 @@ export default function NewDealPage() {
   };
 
   return (
-    <div className="max-w-xl space-y-6">
+    <div className="w-full max-w-4xl space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/deals">
           <Button variant="ghost" size="icon"><ArrowLeft size={20} /></Button>

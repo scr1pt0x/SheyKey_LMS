@@ -17,7 +17,6 @@ import {
   Settings,
   LogOut,
   AlertTriangle,
-  CheckSquare,
   Home,
   MoreHorizontal,
   X,
@@ -25,16 +24,17 @@ import {
   TrendingUp,
   Receipt,
   Users2,
+  Briefcase,
   UserCog,
   User,
-  Search,
+  type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
 
 type NavItem = {
   href: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   roles: string[];
   /** Show in mobile bottom bar (max 3 per role + "More") */
   primary?: boolean;
@@ -43,10 +43,9 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   // Director
   { href: "/director/dashboard",  label: "Дашборд",       icon: Home,        roles: ["director"], primary: true },
-  { href: "/director/approval",   label: "Согласование",  icon: CheckSquare, roles: ["director"], primary: true },
   { href: "/director/analytics",  label: "Аналитика",     icon: BarChart2,   roles: ["director"], primary: true },
+  { href: "/director/managers",    label: "Контроль менеджеров", icon: Briefcase, roles: ["director"] },
   { href: "/director/sb-control",  label: "Контроль СБ",   icon: Shield,      roles: ["director"] },
-  { href: "/director/team",       label: "Команда",       icon: Users,       roles: ["director"] },
   { href: "/director/staff",      label: "Сотрудники",    icon: UserCog,     roles: ["director"] },
   { href: "/director/reports",    label: "Отчёты",        icon: FileText,    roles: ["director"] },
   { href: "/director/audit",      label: "Аудит",         icon: Shield,      roles: ["director"] },

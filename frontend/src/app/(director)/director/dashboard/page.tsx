@@ -1,20 +1,10 @@
 "use client";
 
-import { useDirectorDashboard, useIssuanceDynamics } from "@/hooks/useDirector";
+import { useDirectorDashboard } from "@/hooks/useDirector";
 import { formatCurrency } from "@/lib/utils";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 
 export default function DirectorDashboardPage() {
   const { data: dashboard, isLoading } = useDirectorDashboard();
-  const { data: dynamics } = useIssuanceDynamics(12);
 
   if (isLoading) {
     return (
@@ -29,7 +19,6 @@ export default function DirectorDashboardPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Главный дашборд</h1>
 
-      {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard label="Общий портфель" value={formatCurrency(dashboard.total_portfolio)} accent />
         <KpiCard label="Активные сделки" value={dashboard.active_deals} />
@@ -37,42 +26,12 @@ export default function DirectorDashboardPage() {
         <KpiCard label="Новых в месяц" value={dashboard.new_deals_month} />
       </div>
 
-      {/* Cash flow */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <CashCard label="Поступления сегодня" value={dashboard.cash_flow_today} />
         <CashCard label="Поступления — 7 дней" subtitle="факт, за последние 7 дней" value={dashboard.cash_flow_week} />
         <CashCard label="Поступления за месяц" subtitle="факт, с 1-го числа" value={dashboard.cash_flow_month} />
       </div>
 
-      {dynamics && dynamics.length > 0 && (
-        <div className="bg-white rounded-xl border p-5">
-          <h2 className="font-semibold mb-4">Динамика выдач</h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={dynamics} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1a3a5c" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#1a3a5c" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} />
-              <Tooltip formatter={(v: number) => formatCurrency(v)} />
-              <Area
-                type="monotone"
-                dataKey="total_amount"
-                stroke="#1a3a5c"
-                strokeWidth={2}
-                fill="url(#colorTotal)"
-                name="Объём"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Income */}
       <div className="bg-white rounded-xl border p-5">
         <p className="text-sm text-gray-500">Доход (фактические поступления) за текущий месяц</p>
         <p className="text-3xl font-bold text-green-600 mt-1">

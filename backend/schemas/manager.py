@@ -28,18 +28,15 @@ class DealBrief(BaseModel):
 class ManagerDashboardResponse(BaseModel):
     active_deals: int
     overdue_deals: int
-    pending_deals: int
     draft_deals: int
     portfolio_active_total: Decimal
     payments_today: Decimal
     payments_week: Decimal
     payments_month: Decimal
-    clients_kyc_pending: int
     deals_created_month: int = 0
     schedules_today: list[ScheduledPaymentBrief]
     schedules_week: list[ScheduledPaymentBrief]
     overdue_deals_list: list[DealBrief] = []
-    pending_deals_list: list[DealBrief] = []
 
 
 class ManagerStatsResponse(BaseModel):

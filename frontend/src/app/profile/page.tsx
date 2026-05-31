@@ -59,11 +59,12 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="space-y-6 max-w-md">
+    <div className="space-y-6 w-full">
       <h1 className="text-xl font-bold flex items-center gap-2">
         <User size={22} className="text-[#1a3a5c]" /> Профиль
       </h1>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
       <div className="bg-white rounded-xl border p-5 space-y-2">
         <p className="text-sm text-gray-500">Имя</p>
         <p className="font-semibold">{me?.name}</p>
@@ -109,6 +110,7 @@ export default function ProfilePage() {
         <Button size="sm" loading={changePassword.isPending} onClick={handlePasswordSubmit}>
           Сохранить пароль
         </Button>
+      </div>
       </div>
     </div>
   );

@@ -109,7 +109,7 @@ export default function InvestorsPage() {
   const partnerRemainder = summary?.partner_remainder_pct ?? 0;
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 w-full">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users size={22} className="text-[#1a3a5c]" />

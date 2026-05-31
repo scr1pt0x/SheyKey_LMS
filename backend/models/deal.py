@@ -26,7 +26,6 @@ class DealType(str, PyEnum):
 
 class DealStatus(str, PyEnum):
     draft = "draft"
-    pending = "pending"
     active = "active"
     closed = "closed"
     overdue = "overdue"
@@ -93,9 +92,6 @@ class Deal(Base):
     )
     overdue_cases: Mapped[list["OverdueCase"]] = relationship(
         "OverdueCase", back_populates="deal"
-    )
-    restructurings: Mapped[list["Restructuring"]] = relationship(
-        "Restructuring", back_populates="deal"
     )
 
 

@@ -16,7 +16,7 @@ export interface Deal {
   client_id: string;
   manager_id: string;
   type: "murabaha" | "ijara";
-  status: "draft" | "pending" | "active" | "closed" | "overdue";
+  status: "draft" | "active" | "closed" | "overdue";
   principal: string;
   markup: string;
   total: string;
@@ -90,16 +90,5 @@ export function useSubmitDeal() {
       qc.invalidateQueries({ queryKey: ["deals", id] });
       qc.invalidateQueries({ queryKey: ["deals"] });
     },
-  });
-}
-
-export function useRequestRestructure() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ dealId, reason }: { dealId: string; reason: string }) => {
-      const { data } = await api.post(`/api/deals/${dealId}/restructure`, { reason });
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["deals"] }),
   });
 }

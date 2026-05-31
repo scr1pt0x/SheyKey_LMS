@@ -1,6 +1,6 @@
 """
 Director API: dashboard (Redis-cached), analytics, team management,
-approval queue, audit log, system settings, user management.
+audit log, system settings, user management.
 """
 import json
 import uuid
@@ -25,28 +25,25 @@ from backend.models.audit import AuditLog
 from backend.models.client import Client
 from backend.models.deal import Deal, DealStatus, DealType
 from backend.models.overdue import ContactLog, OverdueCase, OverdueCaseStatus, PaymentPromise
-from backend.models.payment import Payment, PaymentSchedule
-from backend.models.restructuring import Restructuring, RestructuringStatus
+from backend.models.payment import Payment, PaymentSchedule, PaymentStatus
 from backend.models.settings import SystemSetting
 from backend.models.sb_work_session import SbWorkSession
 from backend.models.user import User, UserRole
 from backend.schemas.common import PaginatedResponse
 from backend.schemas.director import (
-    ApprovalDecision,
     AuditLogItem,
     ConversionFunnelResponse,
     DirectorDashboardResponse,
     IssuanceDynamicsItem,
-    ManagerPortfolioItem,
+    ManagerControlItem,
+    OverdueDealItem,
     PortfolioByTypeItem,
     ReassignRequest,
-    RejectDecision,
     SbPerformanceItem,
     SbPresenceItem,
     SettingUpdate,
     TopDebtorItem,
 )
-from backend.schemas.sb import RestructuringResponse
 from backend.schemas.user import UserCreate, UserListResponse, UserResponse
 from backend.services.audit_service import AuditService
 from backend.core.security import hash_password
@@ -228,6 +225,62 @@ async def top_debtors(
         )
         for r in rows.all()
     ]
+
+
+@router.get("/analytics/overdue-deals", response_model=list[OverdueDealItem])
+async def overdue_deals_analytics(
+    limit: int = Query(15, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("director")),
+) -> list[OverdueDealItem]:
+    today = datetime.now(timezone.utc).date()
+    earliest_due_sq = (
+        select(
+            PaymentSchedule.deal_id.label("deal_id"),
+            func.min(PaymentSchedule.due_date).label("earliest_due"),
+        )
+        .where(
+            PaymentSchedule.status.in_(
+                [PaymentStatus.overdue, PaymentStatus.pending, PaymentStatus.partial]
+            )
+        )
+        .group_by(PaymentSchedule.deal_id)
+        .subquery()
+    )
+    rows = await db.execute(
+        select(
+            Deal.id.label("deal_id"),
+            Client.id.label("client_id"),
+            Client.full_name.label("client_name"),
+            User.name.label("manager_name"),
+            Deal.total.label("deal_total"),
+            earliest_due_sq.c.earliest_due,
+            Deal.updated_at,
+        )
+        .join(Client, Deal.client_id == Client.id)
+        .join(User, Deal.manager_id == User.id)
+        .outerjoin(earliest_due_sq, earliest_due_sq.c.deal_id == Deal.id)
+        .where(Deal.status == DealStatus.overdue)
+        .order_by(Deal.total.desc())
+        .limit(limit)
+    )
+    items: list[OverdueDealItem] = []
+    for r in rows.all():
+        if r.earliest_due:
+            days = max(0, (today - r.earliest_due).days)
+        else:
+            days = max(0, (today - r.updated_at.date()).days)
+        items.append(
+            OverdueDealItem(
+                deal_id=r.deal_id,
+                client_id=r.client_id,
+                client_name=r.client_name,
+                manager_name=r.manager_name,
+                deal_total=Decimal(str(r.deal_total)),
+                days_overdue=days,
+            )
+        )
+    return items
 
 
 @router.get("/analytics/sb-performance", response_model=list[SbPerformanceItem])
@@ -427,99 +480,13 @@ async def conversion_funnel(
     counts = {r[0].value: r[1] for r in rows.all()}
     return ConversionFunnelResponse(
         draft=counts.get("draft", 0),
-        pending=counts.get("pending", 0),
         active=counts.get("active", 0),
         closed=counts.get("closed", 0),
         overdue=counts.get("overdue", 0),
     )
 
 
-# ─── Approval queue ──────────────────────────────────────────────────────────
-
-
-@router.get("/approval/deals")
-async def list_pending_deals(
-    limit: int = Query(50, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("director")),
-) -> PaginatedResponse:
-    from backend.schemas.deal import DealListItem
-
-    total = (
-        await db.execute(select(func.count()).where(Deal.status == DealStatus.pending))
-    ).scalar_one()
-    rows = await db.execute(
-        select(Deal)
-        .where(Deal.status == DealStatus.pending)
-        .order_by(Deal.created_at)
-        .limit(limit)
-        .offset(offset)
-    )
-    deals = rows.scalars().all()
-    return PaginatedResponse(
-        items=[DealListItem.model_validate(d) for d in deals],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@router.post("/approval/deals/{deal_id}/approve")
-async def approve_deal(
-    deal_id: uuid.UUID,
-    body: ApprovalDecision,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("director")),
-) -> dict:
-    deal = await db.get(Deal, deal_id)
-    if not deal:
-        raise HTTPException(status_code=404, detail="Сделка не найдена")
-    if deal.status != DealStatus.pending:
-        raise HTTPException(status_code=400, detail="Сделка не ожидает согласования")
-
-    from backend.models.client import Client
-    from backend.services.deal_activation_service import activate_deal
-    from backend.services.deal_portfolio_service import (
-        assign_deal_portfolio,
-        resolve_responsible_manager_id,
-        user_is_manager,
-    )
-
-    client = await db.get(Client, deal.client_id)
-    if client:
-        if body.responsible_manager_id is not None:
-            responsible_id = await resolve_responsible_manager_id(
-                db, current_user, body.responsible_manager_id
-            )
-            await assign_deal_portfolio(db, deal, client, responsible_id)
-        elif await user_is_manager(db, deal.manager_id):
-            await assign_deal_portfolio(db, deal, client, deal.manager_id)
-
-    new_status = await activate_deal(db, deal, current_user.id)
-
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="DEAL_APPROVED",
-        entity="deals",
-        entity_id=str(deal_id),
-        old_val={"status": "pending"},
-        new_val={"status": new_status.value, "comment": body.comment},
-        ip=get_client_ip(request),
-    )
-    await notify_staff(
-        db=db,
-        user_id=deal.manager_id,
-        title="Сделка одобрена",
-        body=f"Ваша сделка на {deal.total} ₽ одобрена руководителем.",
-        entity_type="deals",
-        entity_id=str(deal_id),
-        action_url=f"/deals/{deal_id}",
-    )
-    await db.commit()
-    return {"detail": "Сделка одобрена"}
+# ─── Overdue cases sync ──────────────────────────────────────────────────────
 
 
 @router.post("/sync-overdue-cases")
@@ -539,200 +506,21 @@ async def sync_overdue_cases(
     }
 
 
-@router.post("/approval/deals/{deal_id}/reject")
-async def reject_deal(
-    deal_id: uuid.UUID,
-    body: RejectDecision,
-    request: Request,
+# ─── Manager control ─────────────────────────────────────────────────────────
+
+
+@router.get("/managers/overview", response_model=list[ManagerControlItem])
+async def managers_overview(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("director")),
-) -> dict:
-    deal = await db.get(Deal, deal_id)
-    if not deal:
-        raise HTTPException(status_code=404, detail="Сделка не найдена")
-    if deal.status != DealStatus.pending:
-        raise HTTPException(status_code=400, detail="Сделка не ожидает согласования")
+) -> list[ManagerControlItem]:
+    from backend.services.manager_control_service import fetch_managers_overview
 
-    deal.status = DealStatus.draft
-    deal.rejection_comment = body.comment
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="DEAL_REJECTED",
-        entity="deals",
-        entity_id=str(deal_id),
-        old_val={"status": "pending"},
-        new_val={"status": "draft", "rejection_comment": body.comment},
-        ip=get_client_ip(request),
-    )
-    await notify_staff(
-        db=db,
-        user_id=deal.manager_id,
-        title="Сделка отклонена",
-        body=f"Сделка на {deal.total} ₽ отклонена: {body.comment}",
-        entity_type="deals",
-        entity_id=str(deal_id),
-        action_url=f"/deals/{deal_id}",
-    )
-    await db.commit()
-    return {"detail": "Сделка отклонена"}
+    return await fetch_managers_overview(db)
 
 
-@router.get("/approval/restructurings")
-async def list_pending_restructurings(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("director")),
-) -> list[RestructuringResponse]:
-    rows = await db.execute(
-        select(Restructuring)
-        .where(Restructuring.status == RestructuringStatus.pending)
-        .order_by(Restructuring.created_at)
-    )
-    return [RestructuringResponse.model_validate(r) for r in rows.scalars().all()]
-
-
-@router.post("/approval/restructurings/{r_id}/approve")
-async def approve_restructuring(
-    r_id: uuid.UUID,
-    body: ApprovalDecision,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("director")),
-) -> dict:
-    r = await db.get(Restructuring, r_id)
-    if not r:
-        raise HTTPException(status_code=404, detail="Запрос не найден")
-    if r.status != RestructuringStatus.pending:
-        raise HTTPException(status_code=400, detail="Запрос уже обработан")
-
-    r.status = RestructuringStatus.approved
-    r.approved_by = current_user.id
-    r.decision_comment = body.comment
-    r.decided_at = datetime.now(timezone.utc)
-
-    if r.new_schedule:
-        rows = await db.execute(
-            select(PaymentSchedule).where(PaymentSchedule.deal_id == r.deal_id)
-        )
-        for ps in rows.scalars().all():
-            await db.delete(ps)
-        await db.flush()
-
-        for item in r.new_schedule:
-            ps = PaymentSchedule(
-                deal_id=r.deal_id,
-                installment_number=item["installment_number"],
-                due_date=date.fromisoformat(item["due_date"]),
-                amount=Decimal(str(item["amount"])),
-                installment_type=item.get("installment_type", "principal"),
-            )
-            db.add(ps)
-
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="RESTRUCTURING_APPROVED",
-        entity="restructurings",
-        entity_id=str(r_id),
-        ip=get_client_ip(request),
-    )
-    await db.commit()
-    return {"detail": "Реструктуризация одобрена"}
-
-
-@router.post("/approval/restructurings/{r_id}/reject")
-async def reject_restructuring(
-    r_id: uuid.UUID,
-    body: RejectDecision,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("director")),
-) -> dict:
-    r = await db.get(Restructuring, r_id)
-    if not r:
-        raise HTTPException(status_code=404, detail="Запрос не найден")
-    if r.status != RestructuringStatus.pending:
-        raise HTTPException(status_code=400, detail="Запрос уже обработан")
-
-    r.status = RestructuringStatus.rejected
-    r.approved_by = current_user.id
-    r.decision_comment = body.comment
-    r.decided_at = datetime.now(timezone.utc)
-
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="RESTRUCTURING_REJECTED",
-        entity="restructurings",
-        entity_id=str(r_id),
-        ip=get_client_ip(request),
-    )
-    await db.commit()
-    return {"detail": "Реструктуризация отклонена"}
-
-
-# ─── Team management ─────────────────────────────────────────────────────────
-
-
-@router.get("/team", response_model=list[ManagerPortfolioItem])
-async def get_team(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("director")),
-) -> list[ManagerPortfolioItem]:
-    # Агрегаты по сделкам и аудиту отдельно — иначе JOIN audit_log размножает строки
-    # и завышает count/sum (например 1 сделка × N записей аудита).
-    deal_stats = (
-        select(
-            Deal.manager_id.label("manager_id"),
-            func.count(Deal.id).filter(Deal.status == DealStatus.active).label("active"),
-            func.count(Deal.id).filter(Deal.status == DealStatus.overdue).label("overdue"),
-            func.coalesce(
-                func.sum(Deal.total).filter(Deal.status == DealStatus.active), 0
-            ).label("portfolio"),
-        )
-        .group_by(Deal.manager_id)
-        .subquery()
-    )
-    last_activity_sq = (
-        select(
-            AuditLog.user_id.label("user_id"),
-            func.max(AuditLog.created_at).label("last_activity"),
-        )
-        .where(AuditLog.user_id.isnot(None))
-        .group_by(AuditLog.user_id)
-        .subquery()
-    )
-
-    rows = await db.execute(
-        select(
-            User.id,
-            User.name,
-            func.coalesce(deal_stats.c.active, 0).label("active"),
-            func.coalesce(deal_stats.c.overdue, 0).label("overdue"),
-            func.coalesce(deal_stats.c.portfolio, 0).label("portfolio"),
-            last_activity_sq.c.last_activity,
-        )
-        .where(User.role == UserRole.manager)
-        .where(User.is_active == True)  # noqa
-        .outerjoin(deal_stats, deal_stats.c.manager_id == User.id)
-        .outerjoin(last_activity_sq, last_activity_sq.c.user_id == User.id)
-        .order_by(User.name)
-    )
-    return [
-        ManagerPortfolioItem(
-            manager_id=r.id,
-            manager_name=r.name,
-            active_deals=int(r.active or 0),
-            overdue_deals=int(r.overdue or 0),
-            total_portfolio=Decimal(str(r.portfolio)),
-            last_activity=r.last_activity,
-        )
-        for r in rows.all()
-    ]
-
-
-@router.post("/team/reassign")
-async def reassign(
+@router.post("/managers/reassign")
+async def reassign_managers(
     body: ReassignRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),

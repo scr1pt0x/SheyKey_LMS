@@ -41,7 +41,7 @@ const STATUS_COLORS: Record<string, string> = {
   closed: "bg-green-100 text-green-800",
 };
 
-const TABS = ["Контакты", "Обещания", "Платежи", "Документы", "Реструктуризация"] as const;
+const TABS = ["Контакты", "Обещания", "Платежи", "Документы"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function SbCaseDetailPage() {
@@ -56,9 +56,6 @@ export default function SbCaseDetailPage() {
   // Promise form state
   const [promiseDate, setPromiseDate] = useState(new Date().toISOString().slice(0, 10));
   const [promiseAmount, setPromiseAmount] = useState("");
-
-  // Restructure form state
-  const [restructureReason, setRestructureReason] = useState("");
 
   const [quickSmsText, setQuickSmsText] = useState("");
   const [showQuickSms, setShowQuickSms] = useState(false);
@@ -91,26 +88,6 @@ export default function SbCaseDetailPage() {
       setShowQuickSms(false);
     },
     onError: (err) => toast({ title: "Ошибка", description: getErrorMessage(err), variant: "destructive" }),
-  });
-
-  const requestRestructure = useMutation({
-    mutationFn: () =>
-      api.post(`/api/sb/cases/${id}/restructure`, { reason: restructureReason }),
-    onSuccess: () => {
-      toast({ title: "Запрос на реструктуризацию отправлен" });
-      setRestructureReason("");
-      qc.invalidateQueries({ queryKey: ["restructurings-for-case", id] });
-    },
-    onError: (err) => toast({ title: "Ошибка", description: getErrorMessage(err), variant: "destructive" }),
-  });
-
-  const { data: caseRestructurings } = useQuery({
-    queryKey: ["restructurings-for-case", overdueCase?.deal_id],
-    queryFn: async () => {
-      const { data } = await api.get(`/api/deals/${overdueCase!.deal_id}/restructurings`);
-      return data as { id: string; deal_id: string; status: string; reason: string; created_at: string; decision_comment: string | null }[];
-    },
-    enabled: !!overdueCase?.deal_id,
   });
 
   const { data: dealPayments } = useQuery({
@@ -616,63 +593,6 @@ export default function SbCaseDetailPage() {
         </div>
       )}
 
-      {/* Restructuring */}
-      {activeTab === "Реструктуризация" && (
-        <div className="space-y-4">
-          {/* Existing restructuring requests */}
-          {caseRestructurings && caseRestructurings.length > 0 && (
-            <div className="bg-white rounded-xl border p-5 space-y-3">
-              <h3 className="font-semibold">История запросов</h3>
-              {caseRestructurings.map((r) => {
-                const statusConfig: Record<string, { label: string; className: string }> = {
-                  pending: { label: "Ожидает решения", className: "bg-yellow-100 text-yellow-800" },
-                  approved: { label: "Одобрена", className: "bg-green-100 text-green-800" },
-                  rejected: { label: "Отклонена", className: "bg-red-100 text-red-800" },
-                };
-                const cfg = statusConfig[r.status] ?? { label: r.status, className: "bg-gray-100 text-gray-700" };
-                return (
-                  <div key={r.id} className="border rounded-lg p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <Badge className={cfg.className}>{cfg.label}</Badge>
-                      <span className="text-xs text-gray-500">{formatDate(r.created_at)}</span>
-                    </div>
-                    <p className="text-sm">{r.reason}</p>
-                    {r.decision_comment && (
-                      <p className="text-xs text-gray-500 italic">Комментарий: {r.decision_comment}</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* New request form */}
-          <div className="bg-white rounded-xl border p-5 space-y-4">
-            <h3 className="font-semibold">Новый запрос на реструктуризацию</h3>
-            <p className="text-sm text-gray-500">
-              Запрос будет отправлен руководителю на согласование.
-            </p>
-            <div>
-              <label className="block text-sm font-medium mb-1">Обоснование *</label>
-              <textarea
-                value={restructureReason}
-                onChange={(e) => setRestructureReason(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c] resize-none"
-                placeholder="Клиент временно испытывает финансовые трудности, предлагает..."
-              />
-            </div>
-            <Button
-              size="sm"
-              loading={requestRestructure.isPending}
-              disabled={restructureReason.length < 10}
-              onClick={() => requestRestructure.mutate()}
-            >
-              Отправить запрос
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

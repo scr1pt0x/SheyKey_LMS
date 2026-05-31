@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -13,18 +13,13 @@ from backend.core.dependencies import get_client_ip, get_current_user, require_r
 from backend.models.client import Client
 from backend.models.deal import Deal, DealParam, DealStatus, DealType
 from backend.models.payment import PaymentSchedule
-from backend.models.restructuring import Restructuring
-from backend.schemas.sb import RestructuringResponse
 from backend.models.user import User, UserRole
 from backend.schemas.common import PaginatedResponse
 from backend.schemas.deal import (
-    ApproveRequest,
     DealCreate,
     DealListItem,
     DealResponse,
     DealUpdate,
-    RejectRequest,
-    RestructureRequest,
     ScheduleItemResponse,
 )
 from backend.services.audit_service import AuditService
@@ -35,7 +30,6 @@ from backend.services.deal_portfolio_service import (
 )
 from backend.services.deal_display import deal_purchase_summary, deal_purchase_summary_from_deal
 from backend.services.payment_calculator import generate_schedule
-from backend.services.push_service import notify_staff
 
 router = APIRouter(prefix="/api/deals", tags=["deals"])
 
@@ -279,10 +273,10 @@ async def update_deal(
     if not deal:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
     await require_deal_access(db, deal, current_user)
-    if deal.status not in (DealStatus.draft, DealStatus.pending):
+    if deal.status != DealStatus.draft:
         raise HTTPException(
             status_code=400,
-            detail="Редактирование сделки возможно только до её одобрения",
+            detail="Редактирование возможно только для черновика",
         )
 
     if body.product_description is not None:
@@ -349,48 +343,20 @@ async def submit_deal(
     if deal.status != DealStatus.draft:
         raise HTTPException(status_code=400, detail="Только черновик можно оформить")
 
-    if current_user.role == UserRole.manager:
-        client = await db.get(Client, deal.client_id)
-        if client:
-            await assign_deal_portfolio(db, deal, client, current_user.id)
-        new_status = await activate_deal(db, deal, current_user.id)
-        await AuditService.log(
-            db=db,
-            user_id=str(current_user.id),
-            action="STATUS_CHANGE",
-            entity="deals",
-            entity_id=str(deal.id),
-            old_val={"status": "draft"},
-            new_val={"status": new_status.value},
-            ip=get_client_ip(request),
-        )
-    else:
-        deal.status = DealStatus.pending
-        await AuditService.log(
-            db=db,
-            user_id=str(current_user.id),
-            action="STATUS_CHANGE",
-            entity="deals",
-            entity_id=str(deal.id),
-            old_val={"status": "draft"},
-            new_val={"status": "pending"},
-            ip=get_client_ip(request),
-        )
-        directors = (
-            await db.execute(
-                select(User).where(User.role == UserRole.director).where(User.is_active == True)  # noqa
-            )
-        ).scalars().all()
-        for director in directors:
-            await notify_staff(
-                db=db,
-                user_id=director.id,
-                title="Новая сделка на согласовании",
-                body=f"Сделка на {deal.total} ₽ ожидает вашего решения.",
-                entity_type="deals",
-                entity_id=str(deal.id),
-                action_url="/director/approval",
-            )
+    client = await db.get(Client, deal.client_id)
+    if client:
+        await assign_deal_portfolio(db, deal, client, current_user.id)
+    new_status = await activate_deal(db, deal, current_user.id)
+    await AuditService.log(
+        db=db,
+        user_id=str(current_user.id),
+        action="STATUS_CHANGE",
+        entity="deals",
+        entity_id=str(deal.id),
+        old_val={"status": "draft"},
+        new_val={"status": new_status.value},
+        ip=get_client_ip(request),
+    )
 
     await db.commit()
     result = await db.execute(
@@ -404,65 +370,6 @@ async def submit_deal(
     )
     deal = result.scalar_one()
     return _build_deal_response(deal)
-
-
-@router.get("/{deal_id}/restructurings", response_model=list[RestructuringResponse])
-async def list_deal_restructurings(
-    deal_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("manager", "sb", "director")),
-) -> list[RestructuringResponse]:
-    result = await db.execute(select(Deal).where(Deal.id == deal_id))
-    deal = result.scalar_one_or_none()
-    if not deal:
-        raise HTTPException(status_code=404, detail="Сделка не найдена")
-    await require_deal_access(db, deal, current_user)
-
-    rows = await db.execute(
-        select(Restructuring)
-        .where(Restructuring.deal_id == deal_id)
-        .order_by(Restructuring.created_at.desc())
-    )
-    return [RestructuringResponse.model_validate(r) for r in rows.scalars().all()]
-
-
-@router.post("/{deal_id}/restructure")
-async def request_restructure(
-    deal_id: uuid.UUID,
-    body: RestructureRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("manager", "sb", "director")),
-) -> dict:
-    result = await db.execute(select(Deal).where(Deal.id == deal_id))
-    deal = result.scalar_one_or_none()
-    if not deal:
-        raise HTTPException(status_code=404, detail="Сделка не найдена")
-    await require_deal_access(db, deal, current_user)
-    if deal.status not in (DealStatus.active, DealStatus.overdue):
-        raise HTTPException(
-            status_code=400,
-            detail="Реструктуризация возможна только для активных или просроченных сделок",
-        )
-
-    restructuring = Restructuring(
-        deal_id=deal.id,
-        initiated_by=current_user.id,
-        reason=body.reason,
-        new_schedule=body.new_schedule,
-    )
-    db.add(restructuring)
-    await AuditService.log(
-        db=db,
-        user_id=str(current_user.id),
-        action="RESTRUCTURE_REQUEST",
-        entity="restructurings",
-        entity_id=str(restructuring.id) if restructuring.id else None,
-        new_val={"deal_id": str(deal_id), "reason": body.reason},
-        ip=get_client_ip(request),
-    )
-    await db.commit()
-    return {"detail": "Запрос на реструктуризацию отправлен"}
 
 
 def _build_deal_response(deal: Deal) -> DealResponse:

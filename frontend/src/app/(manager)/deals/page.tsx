@@ -36,9 +36,12 @@ export default function DealsPage() {
     if (s) setStatus(s);
   }, [searchParams]);
 
+  const managerIdParam = searchParams.get("manager_id") ?? "";
+
   const { data, isLoading } = useDeals({
     status: status || undefined,
     type: type || undefined,
+    manager_id: managerIdParam || undefined,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
     limit: LIMIT,

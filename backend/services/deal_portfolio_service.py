@@ -2,7 +2,6 @@
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.client import Client
@@ -35,7 +34,7 @@ async def resolve_responsible_manager_id(
 
 
 async def assign_deal_portfolio(
-    db: AsyncSession,
+    _db: AsyncSession,
     deal: Deal,
     client: Client,
     responsible_id: uuid.UUID,

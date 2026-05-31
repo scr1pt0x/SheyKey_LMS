@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
+import { useAuthStore } from "@/store/auth";
 
 const api = axios.create({
   baseURL: "",
@@ -24,6 +25,13 @@ function processQueue(error: unknown) {
   failedQueue = [];
 }
 
+function redirectToLogin() {
+  useAuthStore.getState().logout();
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    window.location.href = "/login";
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -33,7 +41,7 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (originalRequest.url?.includes("/api/auth/refresh")) {
-        window.location.href = "/login";
+        redirectToLogin();
         return Promise.reject(error);
       }
 
@@ -52,7 +60,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
-        window.location.href = "/login";
+        redirectToLogin();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

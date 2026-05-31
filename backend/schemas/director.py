@@ -40,6 +40,15 @@ class TopDebtorItem(BaseModel):
     sb_status: str | None
 
 
+class OverdueDealItem(BaseModel):
+    deal_id: uuid.UUID
+    client_id: uuid.UUID
+    client_name: str
+    manager_name: str
+    deal_total: Decimal
+    days_overdue: int
+
+
 class SbPerformanceItem(BaseModel):
     sb_user_id: uuid.UUID
     sb_name: str
@@ -58,19 +67,26 @@ class SbPresenceItem(BaseModel):
 
 class ConversionFunnelResponse(BaseModel):
     draft: int
-    pending: int
     active: int
     closed: int
     overdue: int
 
 
-class ManagerPortfolioItem(BaseModel):
-    manager_id: uuid.UUID
-    manager_name: str
-    active_deals: int
-    overdue_deals: int
-    total_portfolio: Decimal
-    last_activity: datetime | None
+class ManagerControlItem(BaseModel):
+    user_id: uuid.UUID
+    name: str
+    active_deals: int = 0
+    overdue_deals: int = 0
+    draft_deals: int = 0
+    total_portfolio: Decimal = Decimal("0")
+    overdue_pct: float = 0.0
+    clients_count: int = 0
+    payments_today: Decimal = Decimal("0")
+    payments_week: Decimal = Decimal("0")
+    payments_month: Decimal = Decimal("0")
+    cash_month: Decimal = Decimal("0")
+    deals_created_month: int = 0
+    last_activity: datetime | None = None
 
 
 class ReassignRequest(BaseModel):
@@ -96,12 +112,3 @@ class AuditLogItem(BaseModel):
 
 class SettingUpdate(BaseModel):
     value: dict | list | str | int | float
-
-
-class ApprovalDecision(BaseModel):
-    comment: str = Field(default="")
-    responsible_manager_id: uuid.UUID | None = None
-
-
-class RejectDecision(BaseModel):
-    comment: str = Field(..., min_length=3)

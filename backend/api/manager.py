@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database import get_db
 from backend.core.dependencies import get_client_ip, require_role
-from backend.models.client import Client, KycStatus
+from backend.models.client import Client
 from backend.models.deal import Deal, DealStatus
 from backend.models.payment import Payment, PaymentSchedule, PaymentStatus
 from backend.models.user import User
@@ -62,7 +62,6 @@ async def manager_dashboard(
 
     active_deals = await count_deals(DealStatus.active)
     overdue_deals = await count_deals(DealStatus.overdue)
-    pending_deals = await count_deals(DealStatus.pending)
     draft_deals = await count_deals(DealStatus.draft)
 
     portfolio_active_total = (
@@ -100,15 +99,6 @@ async def manager_dashboard(
             .where(Deal.manager_id == mid)
             .where(Payment.paid_at >= month_start_dt)
             .where(Payment.paid_at <= day_end)
-        )
-    ).scalar_one()
-
-    clients_kyc_pending = (
-        await db.execute(
-            select(func.count())
-            .where(Client.manager_id == mid)
-            .where(Client.kyc_status == KycStatus.pending)
-            .where(Client.is_archived == False)  # noqa: E712
         )
     ).scalar_one()
 
@@ -166,13 +156,6 @@ async def manager_dashboard(
         .order_by(Deal.updated_at.desc())
         .limit(5)
     )
-    pending_list_rows = await db.execute(
-        select(Deal)
-        .where(Deal.manager_id == mid)
-        .where(Deal.status == DealStatus.pending)
-        .order_by(Deal.created_at.desc())
-        .limit(5)
-    )
 
     def _deal_brief(d: Deal) -> DealBrief:
         return DealBrief(
@@ -186,18 +169,15 @@ async def manager_dashboard(
     return ManagerDashboardResponse(
         active_deals=active_deals,
         overdue_deals=overdue_deals,
-        pending_deals=pending_deals,
         draft_deals=draft_deals,
         portfolio_active_total=Decimal(str(portfolio_active_total)),
         payments_today=Decimal(str(payments_today)),
         payments_week=Decimal(str(payments_week)),
         payments_month=Decimal(str(payments_month)),
-        clients_kyc_pending=clients_kyc_pending,
         deals_created_month=deals_created_month,
         schedules_today=schedules_today,
         schedules_week=schedules_week,
         overdue_deals_list=[_deal_brief(d) for d in overdue_list_rows.scalars().all()],
-        pending_deals_list=[_deal_brief(d) for d in pending_list_rows.scalars().all()],
     )
 
 

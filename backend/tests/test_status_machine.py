@@ -1,10 +1,8 @@
 """Unit tests for deal status machine transitions."""
-import pytest
 
 
 VALID_TRANSITIONS = {
-    "draft": ["pending", "active"],
-    "pending": ["active", "draft"],
+    "draft": ["active"],
     "active": ["closed", "overdue"],
     "overdue": ["active", "closed"],
     "closed": [],
@@ -12,10 +10,9 @@ VALID_TRANSITIONS = {
 
 INVALID_TRANSITIONS = {
     "draft": ["closed", "overdue"],
-    "pending": ["overdue", "closed"],
-    "active": ["draft", "pending"],
-    "overdue": ["draft", "pending"],
-    "closed": ["draft", "pending", "active", "overdue"],
+    "active": ["draft"],
+    "overdue": ["draft"],
+    "closed": ["draft", "active", "overdue"],
 }
 
 
@@ -24,17 +21,8 @@ def is_valid_transition(from_status: str, to_status: str) -> bool:
 
 
 class TestDealStatusMachine:
-    def test_draft_to_pending(self):
-        assert is_valid_transition("draft", "pending") is True
-
-    def test_draft_to_active_manager_activate(self):
+    def test_draft_to_active(self):
         assert is_valid_transition("draft", "active") is True
-
-    def test_pending_to_active(self):
-        assert is_valid_transition("pending", "active") is True
-
-    def test_pending_to_draft_rejection(self):
-        assert is_valid_transition("pending", "draft") is True
 
     def test_active_to_closed(self):
         assert is_valid_transition("active", "closed") is True
@@ -51,11 +39,8 @@ class TestDealStatusMachine:
     def test_draft_cannot_go_overdue(self):
         assert is_valid_transition("draft", "overdue") is False
 
-    def test_pending_cannot_go_overdue(self):
-        assert is_valid_transition("pending", "overdue") is False
-
     def test_closed_is_terminal(self):
-        for target in ["draft", "pending", "active", "overdue"]:
+        for target in ["draft", "active", "overdue"]:
             assert is_valid_transition("closed", target) is False
 
     def test_all_invalid_transitions(self):

@@ -41,7 +41,6 @@ export const DEAL_TYPE_LABELS: Record<string, string> = {
 
 export const DEAL_STATUS_LABELS: Record<string, string> = {
   draft: "Черновик",
-  pending: "На согласовании",
   active: "Активна",
   closed: "Закрыта",
   overdue: "Просрочена",
@@ -49,22 +48,9 @@ export const DEAL_STATUS_LABELS: Record<string, string> = {
 
 export const DEAL_STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
-  pending: "bg-yellow-100 text-yellow-800",
   active: "bg-green-100 text-green-800",
   closed: "bg-blue-100 text-blue-700",
   overdue: "bg-red-100 text-red-800",
-};
-
-export const KYC_STATUS_LABELS: Record<string, string> = {
-  pending: "Не проверен",
-  verified: "Проверен",
-  rejected: "Отклонён",
-};
-
-export const KYC_STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-700",
-  verified: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
 };
 
 export const OVERDUE_STATUS_LABELS: Record<string, string> = {

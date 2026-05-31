@@ -5,7 +5,6 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from backend.models.overdue import ContactType, OverdueCaseStatus
-from backend.models.restructuring import RestructuringStatus
 
 
 class OverdueCaseResponse(BaseModel):
@@ -72,27 +71,6 @@ class PaymentPromiseResponse(BaseModel):
     promised_date: date
     promised_amount: Decimal
     is_fulfilled: bool
-    created_at: datetime
-
-
-class RestructuringCreate(BaseModel):
-    reason: str = Field(..., min_length=10)
-    new_schedule: list[dict] | None = None
-
-
-class RestructuringResponse(BaseModel):
-    model_config = {"from_attributes": True}
-
-    id: uuid.UUID
-    deal_id: uuid.UUID
-    case_id: uuid.UUID | None
-    initiated_by: uuid.UUID
-    reason: str
-    new_schedule: list | None
-    status: RestructuringStatus
-    approved_by: uuid.UUID | None
-    decision_comment: str | None
-    decided_at: datetime | None
     created_at: datetime
 
 

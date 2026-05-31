@@ -2,29 +2,26 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useClients } from "@/hooks/useClients";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  formatDate,
-  formatPhone,
-  cn,
-  KYC_STATUS_LABELS,
-  KYC_STATUS_COLORS,
-} from "@/lib/utils";
+import { formatDate, formatPhone, cn } from "@/lib/utils";
 import { Search, Plus, Archive } from "lucide-react";
 
 const LIMIT = 20;
 
 export default function ClientsPage() {
+  const searchParams = useSearchParams();
+  const managerIdParam = searchParams.get("manager_id") ?? "";
+
   const [q, setQ] = useState("");
-  const [kycStatus, setKycStatus] = useState("");
   const [isArchived, setIsArchived] = useState(false);
   const [offset, setOffset] = useState(0);
 
   const { data, isLoading, error } = useClients({
     q: q || undefined,
-    kyc_status: kycStatus || undefined,
+    manager_id: managerIdParam || undefined,
+    scope: managerIdParam ? "all" : undefined,
     is_archived: isArchived,
     limit: LIMIT,
     offset,
@@ -45,7 +42,6 @@ export default function ClientsPage() {
         </Link>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl border p-4 space-y-3">
         <div className="flex gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
@@ -58,16 +54,6 @@ export default function ClientsPage() {
               className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
             />
           </div>
-          <select
-            value={kycStatus}
-            onChange={(e) => { setKycStatus(e.target.value); setOffset(0); }}
-            className="px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
-          >
-            <option value="">Все KYC статусы</option>
-            <option value="pending">Не проверен</option>
-            <option value="verified">Проверен</option>
-            <option value="rejected">Отклонён</option>
-          </select>
           <button
             onClick={() => setIsArchived(!isArchived)}
             className={cn(
@@ -81,7 +67,6 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      {/* List */}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin h-8 w-8 border-2 border-[#1a3a5c] border-t-transparent rounded-full" />
@@ -90,7 +75,6 @@ export default function ClientsPage() {
         <p className="text-red-500 text-center py-8">Ошибка загрузки</p>
       ) : (
         <>
-          {/* ── Mobile cards (< md) ───────────────────────────────────── */}
           <div className="md:hidden space-y-2">
             {data?.items.map((client) => (
               <Link
@@ -102,11 +86,6 @@ export default function ClientsPage() {
                   <p className="font-semibold text-gray-900 truncate">{client.full_name}</p>
                   <p className="text-sm text-gray-500 mt-0.5">{formatPhone(client.phone)}</p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Badge className={KYC_STATUS_COLORS[client.kyc_status]}>
-                    {KYC_STATUS_LABELS[client.kyc_status]}
-                  </Badge>
-                </div>
                 <span className="text-gray-400 shrink-0">›</span>
               </Link>
             ))}
@@ -115,7 +94,6 @@ export default function ClientsPage() {
             )}
           </div>
 
-          {/* ── Desktop table (md+) ───────────────────────────────────── */}
           <div className="hidden md:block bg-white rounded-xl border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -124,7 +102,6 @@ export default function ClientsPage() {
                     <th className="text-left px-4 py-3 font-medium text-gray-600">ФИО</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Телефон</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Паспорт</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">KYC</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Добавлен</th>
                     <th />
                   </tr>
@@ -135,11 +112,6 @@ export default function ClientsPage() {
                       <td className="px-4 py-3 font-medium">{client.full_name}</td>
                       <td className="px-4 py-3 text-gray-600">{formatPhone(client.phone)}</td>
                       <td className="px-4 py-3 text-gray-600">{client.passport || "—"}</td>
-                      <td className="px-4 py-3">
-                        <Badge className={KYC_STATUS_COLORS[client.kyc_status]}>
-                          {KYC_STATUS_LABELS[client.kyc_status]}
-                        </Badge>
-                      </td>
                       <td className="px-4 py-3 text-gray-500">{formatDate(client.created_at)}</td>
                       <td className="px-4 py-3">
                         <Link href={`/clients/${client.id}`} className="text-[#1a3a5c] hover:underline text-xs font-medium">
@@ -150,7 +122,7 @@ export default function ClientsPage() {
                   ))}
                   {data?.items.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                         Клиенты не найдены
                       </td>
                     </tr>
@@ -171,7 +143,6 @@ export default function ClientsPage() {
             )}
           </div>
 
-          {/* Mobile pagination */}
           {totalPages > 1 && (
             <div className="md:hidden flex items-center justify-between pt-2">
               <Button size="sm" variant="outline" onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0}>Назад</Button>

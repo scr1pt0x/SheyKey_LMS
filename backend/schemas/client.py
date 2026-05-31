@@ -3,8 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from backend.models.client import KycStatus
-
 
 class ClientCreate(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
@@ -24,10 +22,6 @@ class ClientUpdate(BaseModel):
     tags: list[str] | None = None
 
 
-class KycUpdate(BaseModel):
-    kyc_status: KycStatus
-
-
 class ClientResponse(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -37,7 +31,6 @@ class ClientResponse(BaseModel):
     phone: str
     passport: str | None
     address: str | None
-    kyc_status: KycStatus
     is_archived: bool
     notes: str | None
     tags: list | None
@@ -53,7 +46,6 @@ class ClientListItem(BaseModel):
     full_name: str
     phone: str
     passport: str | None
-    kyc_status: KycStatus
     is_archived: bool
     manager_id: uuid.UUID
     created_at: datetime

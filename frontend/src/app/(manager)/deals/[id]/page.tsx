@@ -121,11 +121,6 @@ export default function DealDetailPage() {
         <Info label="Срок">{deal.duration_months} мес.</Info>
         <Info label="Дата начала">{deal.start_date ? formatDate(deal.start_date) : "—"}</Info>
         <Info label="Дата окончания">{deal.end_date ? formatDate(deal.end_date) : "—"}</Info>
-        {deal.rejection_comment && (
-          <Info label="Причина отклонения" className="col-span-full">
-            <p className="text-red-600">{deal.rejection_comment}</p>
-          </Info>
-        )}
       </div>
 
       <DealPaymentPanel

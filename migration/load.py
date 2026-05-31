@@ -125,10 +125,10 @@ async def load() -> None:
             await db.execute(
                 text("""
                     INSERT INTO clients
-                      (id, manager_id, full_name, phone, passport, address, kyc_status, is_archived)
+                      (id, manager_id, full_name, phone, passport, address, is_archived)
                     VALUES
                       (CAST(:id AS uuid), CAST(:manager_id AS uuid), :full_name, :phone,
-                       :passport, :address, 'pending', false)
+                       :passport, :address, false)
                     ON CONFLICT DO NOTHING
                 """),
                 {

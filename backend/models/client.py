@@ -1,18 +1,11 @@
 import uuid
 from datetime import datetime
-from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
-
-
-class KycStatus(str, PyEnum):
-    pending = "pending"
-    verified = "verified"
-    rejected = "rejected"
 
 
 class Client(Base):
@@ -28,9 +21,6 @@ class Client(Base):
     phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     passport: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
-    kyc_status: Mapped[KycStatus] = mapped_column(
-        Enum(KycStatus, name="kyc_status"), default=KycStatus.pending, nullable=False, index=True
-    )
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=list)

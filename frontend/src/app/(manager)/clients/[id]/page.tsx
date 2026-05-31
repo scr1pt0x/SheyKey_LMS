@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useClient, useUpdateKyc, useArchiveClient, useUpdateClient } from "@/hooks/useClients";
+import { useClient, useArchiveClient, useUpdateClient } from "@/hooks/useClients";
 import { useDeals } from "@/hooks/useDeals";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +11,6 @@ import {
   formatDate,
   formatPhone,
   formatCurrency,
-  KYC_STATUS_LABELS,
-  KYC_STATUS_COLORS,
   DEAL_STATUS_LABELS,
   DEAL_STATUS_COLORS,
   DEAL_TYPE_LABELS,
@@ -23,9 +21,9 @@ import { ArrowLeft, Archive, Phone, FileText, Plus, X, Tag } from "lucide-react"
 import { DocumentsSection } from "@/components/features/shared/DocumentsSection";
 import api from "@/lib/axios";
 import { SMS_TEMPLATES } from "@/lib/notificationTemplates";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 
-const TABS = ["Сделки", "Реструктуризации", "Уведомления", "Документы"] as const;
+const TABS = ["Сделки", "Уведомления", "Документы"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function ClientDetailPage() {
@@ -38,7 +36,6 @@ export default function ClientDetailPage() {
 
   const { data: client, isLoading, isError, error, refetch } = useClient(id);
   const { data: dealsData } = useDeals({ client_id: id, limit: 100 });
-  const updateKyc = useUpdateKyc(id);
   const archiveClient = useArchiveClient();
   const updateClient = useUpdateClient(id);
 
@@ -124,27 +121,6 @@ export default function ClientDetailPage() {
 
       {/* Profile card */}
       <div className="bg-white rounded-xl border p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        <InfoItem label="KYC статус">
-          <div className="flex items-center gap-2">
-            <Badge className={KYC_STATUS_COLORS[client.kyc_status]}>
-              {KYC_STATUS_LABELS[client.kyc_status]}
-            </Badge>
-            {client.kyc_status !== "verified" && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  updateKyc.mutate("verified", {
-                    onSuccess: () => refetch(),
-                  })
-                }
-                className="text-xs h-7 px-2"
-              >
-                Подтвердить
-              </Button>
-            )}
-          </div>
-        </InfoItem>
         <InfoItem label="Паспорт">{client.passport || "—"}</InfoItem>
         <InfoItem label="Адрес">{client.address || "—"}</InfoItem>
         <InfoItem label="Менеджер">
@@ -264,10 +240,6 @@ export default function ClientDetailPage() {
         </div>
       )}
 
-      {activeTab === "Реструктуризации" && (
-        <RestructuringHistory clientId={id} dealsData={dealsData?.items ?? []} />
-      )}
-
       {activeTab === "Уведомления" && (
         <p className="text-gray-500 text-center py-8">История уведомлений</p>
       )}
@@ -281,73 +253,6 @@ export default function ClientDetailPage() {
           />
         </div>
       )}
-    </div>
-  );
-}
-
-const R_STATUS_LABELS: Record<string, string> = {
-  pending: "Ожидает",
-  approved: "Одобрена",
-  rejected: "Отклонена",
-};
-const R_STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  approved: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-};
-
-function RestructuringHistory({ clientId, dealsData }: { clientId: string; dealsData: { id: string }[] }) {
-  const dealIds = dealsData.map((d) => d.id);
-  const { data, isLoading } = useQuery({
-    queryKey: ["restructurings", clientId],
-    queryFn: async () => {
-      // Fetch restructurings for each deal in parallel
-      const results = await Promise.all(
-        dealIds.map((dealId) =>
-          api.get(`/api/deals/${dealId}`).then((r) => r.data)
-        )
-      );
-      // Extract restructurings from deals
-      const all: { deal_id: string; id: string; status: string; reason: string; created_at: string; decision_comment: string | null }[] = [];
-      for (const deal of results) {
-        if (deal.restructurings) {
-          all.push(...deal.restructurings.map((r: typeof r & { deal_id: string }) => ({ ...r, deal_id: deal.id })));
-        }
-      }
-      return all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    },
-    enabled: dealIds.length > 0,
-  });
-
-  // Use API endpoint directly
-  const { data: restructurings, isLoading: loading } = useQuery({
-    queryKey: ["client-restructurings", clientId],
-    queryFn: async () => {
-      const { data } = await api.get("/api/director/approval/restructurings");
-      return data as { id: string; deal_id: string; status: string; reason: string; created_at: string; decision_comment: string | null }[];
-    },
-  });
-
-  if (loading) return <div className="flex justify-center py-8"><div className="animate-spin h-6 w-6 border-2 border-[#1a3a5c] border-t-transparent rounded-full" /></div>;
-
-  const filtered = (restructurings ?? []).filter((r) => dealIds.includes(r.deal_id));
-
-  if (!filtered.length) return <p className="text-center text-gray-500 py-8">Реструктуризаций нет</p>;
-
-  return (
-    <div className="space-y-3">
-      {filtered.map((r) => (
-        <div key={r.id} className="bg-white rounded-xl border p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Badge className={R_STATUS_COLORS[r.status]}>{R_STATUS_LABELS[r.status]}</Badge>
-            <span className="text-xs text-gray-500">{formatDate(r.created_at)}</span>
-          </div>
-          <p className="text-sm">{r.reason}</p>
-          {r.decision_comment && (
-            <p className="text-xs text-gray-500 mt-1">Комментарий: {r.decision_comment}</p>
-          )}
-        </div>
-      ))}
     </div>
   );
 }

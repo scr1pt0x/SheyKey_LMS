@@ -109,7 +109,7 @@ async def sync_overdue_case_for_deal(
             await _close_open_case(db, existing, deal, today)
         return None, False
 
-    if deal.status in (DealStatus.active, DealStatus.pending):
+    if deal.status == DealStatus.active:
         deal.status = DealStatus.overdue
     elif deal.status not in (DealStatus.overdue, DealStatus.closed):
         deal.status = DealStatus.overdue

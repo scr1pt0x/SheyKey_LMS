@@ -1,14 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useProfitPeriods, useCalculatePeriod, useApprovePeriod, type ProfitPeriod } from "@/hooks/useProfit";
+import {
+  useProfitPeriods,
+  useCalculatePeriod,
+  useApprovePeriod,
+  useDeleteProfitPeriod,
+  type ProfitPeriod,
+} from "@/hooks/useProfit";
 import { profitCalculateSchema } from "@/lib/schemas/profit";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/axios";
-import { TrendingUp, ChevronDown, ChevronUp, CheckCircle, Calculator } from "lucide-react";
+import { TrendingUp, ChevronDown, ChevronUp, CheckCircle, Calculator, Trash2 } from "lucide-react";
 
 export default function ProfitPage() {
   const now = new Date();
@@ -23,6 +29,7 @@ export default function ProfitPage() {
   const { data: periods, isLoading } = useProfitPeriods();
   const calculate = useCalculatePeriod();
   const approve = useApprovePeriod();
+  const deletePeriod = useDeleteProfitPeriod();
 
   function handleCalculate() {
     const parsed = profitCalculateSchema.safeParse({ period_start: periodStart, period_end: periodEnd });
@@ -49,17 +56,28 @@ export default function ProfitPage() {
     });
   }
 
+  function handleDelete(periodId: string) {
+    if (!confirm("Удалить черновик периода? Это действие нельзя отменить.")) return;
+    deletePeriod.mutate(periodId, {
+      onSuccess: () => {
+        toast({ title: "Черновик удалён" });
+        if (activePeriod?.id === periodId) setActivePeriod(null);
+        if (expandedId === periodId) setExpandedId(null);
+      },
+      onError: (err) => toast({ title: "Ошибка", description: getErrorMessage(err), variant: "destructive" }),
+    });
+  }
+
   const displayPeriod = activePeriod ?? null;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 w-full">
       <div className="flex items-center gap-2">
         <TrendingUp size={22} className="text-[#1a3a5c]" />
         <h1 className="text-xl font-bold">Распределение прибыли</h1>
       </div>
 
-      {/* Period selector */}
-      <div className="bg-white rounded-xl border p-5 space-y-4">
+      <div className="bg-white rounded-xl border p-5 space-y-4 w-full">
         <h2 className="font-semibold">Выберите период</h2>
         <div className="flex gap-3 flex-wrap items-end">
           <div>
@@ -86,44 +104,60 @@ export default function ProfitPage() {
         </div>
       </div>
 
-      {/* Visual formula for active calculation */}
       {displayPeriod && (
         <ProfitFormula
           period={displayPeriod}
           onApprove={() => handleApprove(displayPeriod.id)}
+          onDelete={() => handleDelete(displayPeriod.id)}
           approving={approve.isPending}
+          deleting={deletePeriod.isPending}
         />
       )}
 
-      {/* History */}
       {!isLoading && periods && periods.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-3 w-full">
           <h2 className="font-semibold text-gray-700">История периодов</h2>
           {periods.map((p) => (
-            <div key={p.id} className="bg-white rounded-xl border overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
-                onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
-              >
-                <div className="flex items-center gap-3">
-                  <Badge className={p.status === "approved" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}>
-                    {p.status === "approved" ? "Утверждён" : "Черновик"}
-                  </Badge>
-                  <span className="font-medium text-sm">
-                    {formatDate(p.period_start)} — {formatDate(p.period_end)}
-                  </span>
-                  <span className="text-gray-500 text-sm hidden sm:inline">
-                    Выручка: {formatCurrency(p.gross_revenue)}
-                  </span>
-                </div>
-                {expandedId === p.id ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
-              </button>
+            <div key={p.id} className="bg-white rounded-xl border overflow-hidden w-full">
+              <div className="flex items-center gap-2 p-4">
+                <button
+                  className="flex-1 flex items-center justify-between hover:bg-gray-50 transition-colors rounded-lg -m-2 p-2"
+                  onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                >
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Badge className={p.status === "approved" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}>
+                      {p.status === "approved" ? "Утверждён" : "Черновик"}
+                    </Badge>
+                    <span className="font-medium text-sm">
+                      {formatDate(p.period_start)} — {formatDate(p.period_end)}
+                    </span>
+                    <span className="text-gray-500 text-sm">
+                      Выручка: {formatCurrency(p.gross_revenue)}
+                    </span>
+                  </div>
+                  {expandedId === p.id ? <ChevronUp size={18} className="text-gray-400 shrink-0" /> : <ChevronDown size={18} className="text-gray-400 shrink-0" />}
+                </button>
+                {p.status === "draft" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600 border-red-200 hover:bg-red-50 shrink-0"
+                    loading={deletePeriod.isPending}
+                    onClick={() => handleDelete(p.id)}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                )}
+              </div>
               {expandedId === p.id && (
                 <div className="border-t">
                   <ProfitFormula
                     period={p}
                     onApprove={p.status === "draft" ? () => handleApprove(p.id) : undefined}
+                    onDelete={p.status === "draft" ? () => handleDelete(p.id) : undefined}
                     approving={approve.isPending}
+                    deleting={deletePeriod.isPending}
+                    embedded
                   />
                 </div>
               )}
@@ -139,45 +173,41 @@ export default function ProfitPage() {
 function ProfitFormula({
   period,
   onApprove,
+  onDelete,
   approving,
+  deleting,
+  embedded,
 }: {
   period: ProfitPeriod;
   onApprove?: () => void;
+  onDelete?: () => void;
   approving?: boolean;
+  deleting?: boolean;
+  embedded?: boolean;
 }) {
   return (
-    <div className="bg-white rounded-xl border overflow-hidden">
+    <div className={embedded ? "" : "bg-white rounded-xl border overflow-hidden w-full"}>
       <div className="p-5 space-y-0">
-
-        {/* Incoming */}
         <FormulaRow
           label="Входящие платежи от клиентов"
           value={formatCurrency(period.gross_revenue)}
           type="income"
         />
-
-        {/* Expenses */}
         <FormulaRow
-          label={`Расходы периода`}
+          label="Расходы периода"
           value={`− ${formatCurrency(period.total_expenses)}`}
           type="minus"
         />
-
-        {/* Net company */}
         <FormulaRow
           label="Чистая прибыль компании"
           value={formatCurrency(period.gross_revenue - period.total_expenses)}
           type="result"
         />
-
-        {/* Manager bonus */}
         <FormulaRow
           label={`Бонусы менеджерам (${period.manager_bonus_pct}%)`}
           value={`− ${formatCurrency(period.manager_bonus_amount)}`}
           type="minus"
         />
-
-        {/* Distributable */}
         <FormulaRow
           label="К распределению между инвесторами"
           value={formatCurrency(period.net_distributable)}
@@ -185,7 +215,6 @@ function ProfitFormula({
           highlight
         />
 
-        {/* Investors */}
         {period.distributions.length > 0 && (
           <div className="mt-1 mb-1 ml-4 space-y-0">
             {period.distributions.map((d) => (
@@ -199,7 +228,6 @@ function ProfitFormula({
           </div>
         )}
 
-        {/* Partner remainder */}
         {period.partner_remainder > 0 && (
           <FormulaRow
             label={`Остаток партнёрам (${(100 - period.distributions.reduce((s, d) => s + d.share_pct, 0)).toFixed(2)}%)`}
@@ -208,11 +236,15 @@ function ProfitFormula({
           />
         )}
 
-        {/* Actions */}
-        <div className="pt-4 flex gap-3">
+        <div className="pt-4 flex flex-wrap gap-3">
           {onApprove && period.status === "draft" && (
             <Button loading={approving} onClick={onApprove}>
               <CheckCircle size={16} /> Утвердить распределение
+            </Button>
+          )}
+          {onDelete && period.status === "draft" && (
+            <Button variant="outline" className="text-red-600 border-red-200" loading={deleting} onClick={onDelete}>
+              <Trash2 size={16} /> Удалить черновик
             </Button>
           )}
           {period.status === "approved" && (

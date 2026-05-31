@@ -70,9 +70,6 @@ class OverdueCase(Base):
     payment_promises: Mapped[list["PaymentPromise"]] = relationship(
         "PaymentPromise", back_populates="case", cascade="all, delete-orphan"
     )
-    restructurings: Mapped[list["Restructuring"]] = relationship(
-        "Restructuring", back_populates="case"
-    )
 
 
 class ContactLog(Base):

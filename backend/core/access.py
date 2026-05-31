@@ -13,9 +13,6 @@ from backend.models.payment import Payment
 from backend.models.user import User, UserRole
 from backend.services.search_service import client_has_open_sb_case
 
-MANAGER_FORBIDDEN_DETAIL = "Нет доступа к этому ресурсу"
-CLIENT_NOT_IN_PORTFOLIO = "Клиент не в вашем портфеле"
-
 
 def list_manager_filter(
     user: User, manager_id_param: uuid.UUID | None
@@ -29,14 +26,6 @@ def list_manager_filter(
     if user.role == UserRole.director:
         return manager_id_param
     return None
-
-
-async def require_client_access(
-    db: AsyncSession, client: Client, user: User
-) -> None:
-    del db, client
-    if user.role == UserRole.manager:
-        return
 
 
 async def require_deal_access(
@@ -85,7 +74,6 @@ async def load_client_for_user(
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(status_code=404, detail="Клиент не найден")
-    await require_client_access(db, client, user)
     if user.role == UserRole.sb:
         if not await client_has_open_sb_case(db, client_id):
             raise HTTPException(

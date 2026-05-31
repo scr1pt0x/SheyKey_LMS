@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database import get_db
 from backend.core.dependencies import require_role
-from backend.models.client import Client, KycStatus
+from backend.models.client import Client
 from backend.models.deal import Deal, DealStatus, DealType, DealParam
 from backend.models.payment import Payment, PaymentMethod, PaymentSchedule, PaymentStatus
 from backend.models.user import User, UserRole
@@ -299,7 +299,6 @@ async def import_clients(
                 phone=phone,
                 passport=passport,
                 address=address,
-                kyc_status=KycStatus.pending,
             )
             db.add(client)
             existing_phones.add(phone)

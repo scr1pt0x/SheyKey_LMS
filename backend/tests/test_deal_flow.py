@@ -1,6 +1,6 @@
 """
 Integration test: full deal lifecycle.
-draft → pending → active → payment → overdue → SB → restructure
+draft → active → payment → overdue → SB
 Requires real PostgreSQL. Run with TEST_DATABASE_URL env var pointing to test DB.
 """
 import pytest

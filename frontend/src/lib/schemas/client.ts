@@ -13,11 +13,6 @@ export type ClientCreateForm = z.infer<typeof clientCreateSchema>;
 export const clientUpdateSchema = clientCreateSchema.partial();
 export type ClientUpdateForm = z.infer<typeof clientUpdateSchema>;
 
-export const kycUpdateSchema = z.object({
-  kyc_status: z.enum(["pending", "verified", "rejected"]),
-});
-export type KycUpdateForm = z.infer<typeof kycUpdateSchema>;
-
 export const noteSchema = z.object({
   note: z.string().min(1, "Заметка не может быть пустой"),
 });

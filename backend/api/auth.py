@@ -103,7 +103,7 @@ async def login(
         ip=get_client_ip(request),
     )
 
-    _set_auth_cookies(response, access_token, refresh_token, settings)
+    _set_auth_cookies(response, access_token, f"{user.id}:{refresh_token}", settings)
     return TokenResponse(role=user.role.value, name=user.name, id=str(user.id))
 
 

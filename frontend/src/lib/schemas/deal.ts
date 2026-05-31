@@ -44,8 +44,3 @@ export const dealCreateSchema = z
   );
 
 export type DealCreateForm = z.infer<typeof dealCreateSchema>;
-
-export const restructureSchema = z.object({
-  reason: z.string().min(10, "Обоснование минимум 10 символов"),
-});
-export type RestructureForm = z.infer<typeof restructureSchema>;

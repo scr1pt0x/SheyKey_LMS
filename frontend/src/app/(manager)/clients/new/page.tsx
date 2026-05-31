@@ -34,7 +34,7 @@ export default function NewClientPage() {
   };
 
   return (
-    <div className="max-w-xl space-y-6">
+    <div className="w-full max-w-4xl space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/clients">
           <Button variant="ghost" size="icon">

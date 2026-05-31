@@ -4,18 +4,15 @@ import api from "@/lib/axios";
 export interface ManagerDashboard {
   active_deals: number;
   overdue_deals: number;
-  pending_deals: number;
   draft_deals: number;
   portfolio_active_total: number | string;
   payments_today: number | string;
   payments_week: number | string;
   payments_month: number | string;
-  clients_kyc_pending: number;
   deals_created_month: number;
   schedules_today: ScheduledPaymentBrief[];
   schedules_week: ScheduledPaymentBrief[];
   overdue_deals_list: DealBrief[];
-  pending_deals_list: DealBrief[];
 }
 
 export interface ScheduledPaymentBrief {

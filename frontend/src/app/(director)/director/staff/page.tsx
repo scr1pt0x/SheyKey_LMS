@@ -18,10 +18,18 @@ import { UserPlus, Users, Pencil, X } from "lucide-react";
 
 type RoleFilter = "all" | "manager" | "sb";
 
-const EMPTY_CREATE = {
+type CreateStaffForm = {
+  name: string;
+  phone: string;
+  role: "manager" | "sb";
+  password: string;
+  passwordConfirm: string;
+};
+
+const EMPTY_CREATE: CreateStaffForm = {
   name: "",
   phone: "",
-  role: "manager" as const,
+  role: "manager",
   password: "",
   passwordConfirm: "",
 };
@@ -35,7 +43,7 @@ export default function StaffPage() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState<StaffUser | null>(null);
-  const [createForm, setCreateForm] = useState(EMPTY_CREATE);
+  const [createForm, setCreateForm] = useState<CreateStaffForm>(EMPTY_CREATE);
   const [editForm, setEditForm] = useState(EMPTY_EDIT);
 
   const listRole = roleFilter === "all" ? undefined : roleFilter;
@@ -138,7 +146,7 @@ export default function StaffPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 w-full">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Users size={22} className="text-[#1a3a5c]" />

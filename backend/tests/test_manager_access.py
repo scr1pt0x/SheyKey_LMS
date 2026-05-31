@@ -6,10 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from backend.core.access import (
-    CLIENT_NOT_IN_PORTFOLIO,
-    MANAGER_FORBIDDEN_DETAIL,
     list_manager_filter,
-    require_client_access,
     require_deal_access,
 )
 from backend.models.user import UserRole
@@ -38,39 +35,6 @@ def test_list_manager_filter_director_optional():
 def test_list_manager_filter_sb_no_filter():
     sb = _user(UserRole.sb)
     assert list_manager_filter(sb, uuid.uuid4()) is None
-
-
-@pytest.mark.asyncio
-async def test_require_client_access_manager_own():
-    from unittest.mock import AsyncMock
-
-    manager = _user(UserRole.manager)
-    client = MagicMock()
-    client.manager_id = manager.id
-    db = AsyncMock()
-    await require_client_access(db, client, manager)
-
-
-@pytest.mark.asyncio
-async def test_require_client_access_manager_any_client():
-    from unittest.mock import AsyncMock
-
-    manager = _user(UserRole.manager)
-    client = MagicMock()
-    client.manager_id = uuid.uuid4()
-    db = AsyncMock()
-    await require_client_access(db, client, manager)
-
-
-@pytest.mark.asyncio
-async def test_require_client_access_director_any():
-    from unittest.mock import AsyncMock
-
-    director = _user(UserRole.director)
-    client = MagicMock()
-    client.manager_id = uuid.uuid4()
-    db = AsyncMock()
-    await require_client_access(db, client, director)
 
 
 @pytest.mark.asyncio
@@ -115,7 +79,7 @@ async def test_require_deal_access_manager_forbidden():
     db = AsyncMock()
     with patch(
         "backend.core.access.load_client_for_user",
-        new=AsyncMock(side_effect=HTTPException(status_code=403, detail=MANAGER_FORBIDDEN_DETAIL)),
+        new=AsyncMock(side_effect=HTTPException(status_code=403, detail="forbidden")),
     ):
         with pytest.raises(HTTPException) as exc:
             await require_deal_access(db, deal, manager)
@@ -133,14 +97,8 @@ def test_list_deals_manager_filter_skipped_with_client_id():
     assert apply_manager_filter is False
 
 
-def test_constants():
-    assert CLIENT_NOT_IN_PORTFOLIO == "Клиент не в вашем портфеле"
-
-
 @pytest.mark.asyncio
 async def test_require_sb_case_on_deal_blocks_unassigned():
-    from unittest.mock import AsyncMock, MagicMock
-
     from backend.core.access import require_sb_case_on_deal
 
     db = AsyncMock()

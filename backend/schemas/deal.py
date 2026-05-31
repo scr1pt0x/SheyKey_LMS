@@ -98,16 +98,3 @@ class DealListItem(BaseModel):
     manager_name: str | None = None
     client_name: str | None = None
     created_at: datetime
-
-
-class ApproveRequest(BaseModel):
-    comment: str | None = None
-
-
-class RejectRequest(BaseModel):
-    comment: str = Field(..., min_length=3)
-
-
-class RestructureRequest(BaseModel):
-    reason: str = Field(..., min_length=10)
-    new_schedule: list[dict] | None = None

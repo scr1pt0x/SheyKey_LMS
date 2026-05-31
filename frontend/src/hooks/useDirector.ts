@@ -1,6 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/axios";
 
+export interface ManagerControlRow {
+  user_id: string;
+  name: string;
+  active_deals: number;
+  overdue_deals: number;
+  draft_deals: number;
+  total_portfolio: string;
+  overdue_pct: number;
+  clients_count: number;
+  payments_today: string;
+  payments_week: string;
+  payments_month: string;
+  cash_month: string;
+  deals_created_month: number;
+  last_activity: string | null;
+}
+
 export function useDirectorDashboard() {
   return useQuery({
     queryKey: ["director-dashboard"],
@@ -121,7 +138,7 @@ export function useCreateStaffUser() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["staff-users"] });
       qc.invalidateQueries({ queryKey: ["sb-staff"] });
-      qc.invalidateQueries({ queryKey: ["director-team"] });
+      qc.invalidateQueries({ queryKey: ["director-managers"] });
     },
   });
 }
@@ -144,7 +161,7 @@ export function useUpdateStaffUser() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["staff-users"] });
       qc.invalidateQueries({ queryKey: ["sb-staff"] });
-      qc.invalidateQueries({ queryKey: ["director-team"] });
+      qc.invalidateQueries({ queryKey: ["director-managers"] });
     },
   });
 }
@@ -159,7 +176,71 @@ export function useDeactivateStaffUser() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["staff-users"] });
       qc.invalidateQueries({ queryKey: ["sb-staff"] });
-      qc.invalidateQueries({ queryKey: ["director-team"] });
+      qc.invalidateQueries({ queryKey: ["director-managers"] });
+    },
+  });
+}
+
+export function usePortfolioByType() {
+  return useQuery({
+    queryKey: ["analytics", "portfolio"],
+    queryFn: async () => {
+      const { data } = await api.get("/api/director/analytics/portfolio");
+      return data as { type: string; count: number; total_amount: string; pct: number }[];
+    },
+  });
+}
+
+export function useOverdueDealsAnalytics(limit = 15) {
+  return useQuery({
+    queryKey: ["analytics", "overdue-deals", limit],
+    queryFn: async () => {
+      const { data } = await api.get("/api/director/analytics/overdue-deals", { params: { limit } });
+      return data as {
+        deal_id: string;
+        client_id: string;
+        client_name: string;
+        manager_name: string;
+        deal_total: string;
+        days_overdue: number;
+      }[];
+    },
+  });
+}
+
+export function useAnalyticsIncome(months = 3) {
+  return useQuery({
+    queryKey: ["analytics", "income", months],
+    queryFn: async () => {
+      const { data } = await api.get("/api/director/analytics/income", { params: { months } });
+      return data as { type: string; income: number; payment_count: number }[];
+    },
+  });
+}
+
+export function useAnalyticsAvgDeal() {
+  return useQuery({
+    queryKey: ["analytics", "avg-deal"],
+    queryFn: async () => {
+      const { data } = await api.get("/api/director/analytics/avg-deal");
+      return data as { by_type: { type: string; avg_amount: number; count: number }[]; overall_avg: number };
+    },
+  });
+}
+
+export function useManagerActivity(days = 30) {
+  return useQuery({
+    queryKey: ["analytics", "team-activity", days, "manager"],
+    queryFn: async () => {
+      const { data } = await api.get("/api/director/analytics/team-activity", { params: { days } });
+      return (data as {
+        user_id: string;
+        name: string;
+        role: string;
+        action_count: number;
+        last_action: string | null;
+        top_action: string | null;
+      }[]).filter((u) => u.role === "manager");
     },
   });
 }
@@ -174,11 +255,11 @@ export function useConversionFunnel() {
   });
 }
 
-export function useTeam() {
-  return useQuery({
-    queryKey: ["director-team"],
+export function useManagerControl() {
+  return useQuery<ManagerControlRow[]>({
+    queryKey: ["director-managers"],
     queryFn: async () => {
-      const { data } = await api.get("/api/director/team");
+      const { data } = await api.get<ManagerControlRow[]>("/api/director/managers/overview");
       return data;
     },
   });
@@ -191,90 +272,5 @@ export function useAuditLog(params: Record<string, unknown> = {}) {
       const { data } = await api.get("/api/director/audit", { params });
       return data;
     },
-  });
-}
-
-export function usePendingDeals() {
-  return useQuery({
-    queryKey: ["approval", "deals"],
-    queryFn: async () => {
-      const { data } = await api.get("/api/director/approval/deals");
-      return data;
-    },
-  });
-}
-
-export function usePendingRestructurings() {
-  return useQuery({
-    queryKey: ["approval", "restructurings"],
-    queryFn: async () => {
-      const { data } = await api.get("/api/director/approval/restructurings");
-      return data;
-    },
-  });
-}
-
-export function useApproveDeal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      dealId,
-      comment,
-      responsible_manager_id,
-    }: {
-      dealId: string;
-      comment?: string;
-      responsible_manager_id?: string;
-    }) => {
-      const { data } = await api.post(`/api/director/approval/deals/${dealId}/approve`, {
-        comment: comment ?? "",
-        ...(responsible_manager_id
-          ? { responsible_manager_id }
-          : {}),
-      });
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["approval"] });
-      qc.invalidateQueries({ queryKey: ["deals"] });
-      qc.invalidateQueries({ queryKey: ["director-dashboard"] });
-    },
-  });
-}
-
-export function useRejectDeal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ dealId, comment }: { dealId: string; comment: string }) => {
-      const { data } = await api.post(`/api/director/approval/deals/${dealId}/reject`, { comment });
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["approval"] }),
-  });
-}
-
-export function useApproveRestructuring() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ rId, comment }: { rId: string; comment?: string }) => {
-      const { data } = await api.post(`/api/director/approval/restructurings/${rId}/approve`, {
-        comment: comment ?? "",
-      });
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["approval"] }),
-  });
-}
-
-export function useRejectRestructuring() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ rId, comment }: { rId: string; comment: string }) => {
-      const { data } = await api.post(`/api/director/approval/restructurings/${rId}/reject`, {
-        comment,
-      });
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["approval"] }),
   });
 }

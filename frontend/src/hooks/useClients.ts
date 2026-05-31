@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/axios";
+import type { ClientCreateForm } from "@/lib/schemas/client";
 
 export interface Client {
   id: string;
@@ -9,7 +10,6 @@ export interface Client {
   phone: string;
   passport: string | null;
   address: string | null;
-  kyc_status: "pending" | "verified" | "rejected";
   is_archived: boolean;
   notes: string | null;
   tags: string[] | null;
@@ -19,7 +19,6 @@ export interface Client {
 
 export interface ClientListParams {
   q?: string;
-  kyc_status?: string;
   manager_id?: string;
   /** portfolio — только свои (по умолчанию); all — все клиенты (форма сделки) */
   scope?: "portfolio" | "all";
@@ -52,8 +51,15 @@ export function useClient(id: string) {
 export function useCreateClient() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: Omit<Client, "id" | "manager_id" | "kyc_status" | "is_archived" | "created_at" | "updated_at">) => {
-      const { data } = await api.post("/api/clients", body);
+    mutationFn: async (body: ClientCreateForm) => {
+      const { data } = await api.post("/api/clients", {
+        full_name: body.full_name,
+        phone: body.phone,
+        passport: body.passport ?? null,
+        address: body.address ?? null,
+        notes: body.notes ?? null,
+        tags: body.tags,
+      });
       return data as Client;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
@@ -82,16 +88,5 @@ export function useArchiveClient() {
       return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
-  });
-}
-
-export function useUpdateKyc(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (kyc_status: string) => {
-      const { data } = await api.patch(`/api/clients/${id}/kyc`, { kyc_status });
-      return data;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["clients", id] }),
   });
 }

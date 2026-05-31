@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAuditLog, useTeam } from "@/hooks/useDirector";
+import { useAuditLog, useManagerControl } from "@/hooks/useDirector";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
 import { Shield, Download } from "lucide-react";
@@ -20,16 +20,12 @@ const ACTION_LABELS: Record<string, string> = {
   PAYMENT_RECORDED: "Платёж зафиксирован",
   PAYMENT_CONFIRMED: "Платёж подтверждён",
   RECEIPT_ATTACHED: "Чек прикреплён",
-  KYC_UPDATE: "Обновление KYC",
   ARCHIVE: "Архивация",
   ADD_NOTE: "Заметка",
   STATUS_CHANGE: "Смена статуса",
   CASE_ASSIGNED: "Дело назначено",
   CONTACT_LOGGED: "Контакт записан",
   PROMISE_ADDED: "Обещание добавлено",
-  RESTRUCTURE_REQUEST: "Запрос реструктуризации",
-  RESTRUCTURING_APPROVED: "Реструктуризация одобрена",
-  RESTRUCTURING_REJECTED: "Реструктуризация отклонена",
   DOCUMENT_UPLOADED: "Документ загружен",
   REASSIGN: "Перераспределение",
   SETTING_UPDATED: "Настройка изменена",
@@ -62,7 +58,6 @@ const ENTITY_LABELS: Record<string, string> = {
   overdue_cases: "Дела СБ",
   contact_logs: "Контакты СБ",
   payment_promises: "Обещания платежей",
-  restructurings: "Реструктуризации",
   documents: "Документы",
   notifications_log: "Уведомления",
   system_settings: "Настройки",
@@ -75,13 +70,13 @@ const ENTITY_LABELS: Record<string, string> = {
 
 const ENTITY_OPTIONS = [
   "users", "clients", "deals", "payments",
-  "overdue_cases", "restructurings", "documents", "system_settings",
+  "overdue_cases", "documents", "system_settings",
 ];
 
 const ACTION_OPTIONS = [
   "CREATE", "UPDATE", "DELETE", "LOGIN", "LOGOUT",
   "DEAL_APPROVED", "DEAL_REJECTED", "PAYMENT_RECORDED",
-  "STATUS_CHANGE", "KYC_UPDATE", "BULK_IMPORT",
+  "STATUS_CHANGE", "BULK_IMPORT",
 ];
 
 const ROLE_RU: Record<string, string> = {
@@ -147,13 +142,6 @@ function extractDetail(
   }
   if (n.status) return STATUS_RU[String(n.status)] ?? String(n.status);
 
-  // KYC
-  if (action === "KYC_UPDATE" && n.kyc_status) {
-    const from = o.kyc_status ? (STATUS_RU[String(o.kyc_status)] ?? o.kyc_status) : null;
-    const to = STATUS_RU[String(n.kyc_status)] ?? n.kyc_status;
-    return from ? `KYC: ${from} → ${to}` : `KYC: ${to}`;
-  }
-
   // Payment
   if (n.amount) return `${n.amount} ₽`;
 
@@ -201,7 +189,7 @@ export default function AuditPage() {
     offset,
   });
 
-  const { data: team } = useTeam();
+  const { data: managers } = useManagerControl();
 
   const exportExcel = async () => {
     const response = await api.post(
@@ -236,8 +224,8 @@ export default function AuditPage() {
           className="px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
         >
           <option value="">Все сотрудники</option>
-          {(team as { manager_id: string; manager_name: string }[] ?? []).map((m) => (
-            <option key={m.manager_id} value={m.manager_id}>{m.manager_name}</option>
+          {(managers as { user_id: string; name: string }[] ?? []).map((m) => (
+            <option key={m.user_id} value={m.user_id}>{m.name}</option>
           ))}
         </select>
         <select
