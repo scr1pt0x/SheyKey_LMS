@@ -1,22 +1,17 @@
-"""Document generation endpoints: contracts, schedules, reports."""
+"""Document generation endpoints: murabaha DOCX, director reports."""
 import uuid
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.access import require_deal_access
 from backend.core.database import get_db
 from backend.core.dependencies import require_role
 from backend.models.user import User
 from backend.services.excel_exporter import export_audit_log, export_overdue, export_portfolio
-from backend.services.pdf_generator import (
-    generate_contract_pdf,
-    generate_overdue_pdf,
-    generate_portfolio_pdf,
-    generate_schedule_pdf,
-)
+from backend.services.pdf_generator import generate_overdue_pdf, generate_portfolio_pdf
 
 router = APIRouter(prefix="/api/documents/generate", tags=["generate"])
 
@@ -31,35 +26,28 @@ class ExportFormat(str, Enum):
     xlsx = "xlsx"
 
 
-@router.post("/contract/{deal_id}")
-async def generate_contract(
+@router.post("/murabaha-docx/{deal_id}")
+async def generate_murabaha_docx(
     deal_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager", "director")),
 ) -> Response:
-    try:
-        pdf = await generate_contract_pdf(str(deal_id))
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    return Response(
-        content=pdf,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="contract_{deal_id}.pdf"'},
-    )
+    from backend.models.deal import Deal
 
+    from backend.services.murabaha_contract_service import generate_murabaha_docx_for_deal
 
-@router.post("/schedule/{deal_id}")
-async def generate_schedule(
-    deal_id: uuid.UUID,
-    current_user: User = Depends(require_role("manager", "director")),
-) -> Response:
+    deal = await db.get(Deal, deal_id)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    await require_deal_access(db, deal, current_user)
     try:
-        pdf = await generate_schedule_pdf(str(deal_id))
+        content = await generate_murabaha_docx_for_deal(db, deal_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Response(
-        content=pdf,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="schedule_{deal_id}.pdf"'},
+        content=content,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="murabaha_{deal_id}.zip"'},
     )
 
 

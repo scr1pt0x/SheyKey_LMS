@@ -1,5 +1,5 @@
 """
-Daily task: sync overdue cases and notify directors for newly created cases past threshold.
+Daily task: sync overdue cases and notify directors for new SB-stage cases.
 Runs at 00:05 Moscow time.
 """
 import asyncio
@@ -8,8 +8,8 @@ from loguru import logger
 from sqlalchemy import select
 
 from backend.core.database import AsyncSessionLocal
-from backend.models.settings import SettingKey, SystemSetting
 from backend.models.user import User, UserRole
+from backend.services.debt_collection_stage_service import load_debt_stage_settings
 from backend.services.overdue_case_service import sync_all_overdue_deals
 from backend.services.push_service import notify_staff
 from backend.tasks.celery_app import celery_app
@@ -23,12 +23,8 @@ def auto_transfer_to_sb() -> dict:
 async def _auto_transfer_to_sb() -> dict:
     notified = 0
     async with AsyncSessionLocal() as db:
-        setting = (
-            await db.execute(
-                select(SystemSetting.value).where(SystemSetting.key == SettingKey.SB_THRESHOLD_DAYS)
-            )
-        ).scalar_one_or_none()
-        threshold_days = int(setting) if setting is not None else 7
+        stage_settings = await load_debt_stage_settings(db)
+        threshold_days = stage_settings.stage_2_days
 
         synced, created_cases = await sync_all_overdue_deals(db)
 
@@ -39,6 +35,8 @@ async def _auto_transfer_to_sb() -> dict:
         ).scalars().all()
 
         for case in created_cases:
+            if case.collection_stage < 2:
+                continue
             if case.days_overdue < threshold_days:
                 continue
             for director in directors:
@@ -46,7 +44,10 @@ async def _auto_transfer_to_sb() -> dict:
                     db=db,
                     user_id=director.id,
                     title="Новое дело в СБ",
-                    body=f"Сделка просрочена {case.days_overdue} дн. · Долг: {case.total_debt} ₽",
+                    body=(
+                        f"Этап {case.collection_stage}: просрочка {case.days_overdue} дн. "
+                        f"· Долг: {case.total_debt} ₽"
+                    ),
                     entity_type="overdue_cases",
                     entity_id=str(case.id),
                     action_url=f"/sb/cases/{case.id}",

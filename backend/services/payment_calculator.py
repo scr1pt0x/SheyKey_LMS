@@ -4,7 +4,7 @@ Payment schedule calculators for all three Islamic finance deal types.
 All amounts use Python Decimal for precision.
 """
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from dateutil.relativedelta import relativedelta
@@ -22,38 +22,54 @@ def _round(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def generate_murabaha_schedule_bot(
+    total: Decimal,
+    advance: Decimal,
+    duration_months: int,
+    start_date: date,
+    payday: int,
+) -> list[ScheduleItem]:
+    """Murabaha schedule: dogovorshikbot logic (advance, payday, ceil monthly)."""
+    from backend.services.murabaha_bot_schedule import generate_bot_payment_schedule
+
+    rows = generate_bot_payment_schedule(
+        start_date=start_date,
+        term=duration_months,
+        payday=payday,
+        cost=int(total),
+        advance=int(advance),
+    )
+    items: list[ScheduleItem] = []
+    for i, row in enumerate(rows, start=1):
+        due = datetime.strptime(row["date"], "%d.%m.%Y").date()
+        items.append(
+            ScheduleItem(
+                installment_number=i,
+                due_date=due,
+                amount=Decimal(str(row["amount"])),
+                installment_type="principal",
+            )
+        )
+    return items
+
+
 def generate_murabaha_schedule(
     principal: Decimal,
     markup: Decimal,
     duration_months: int,
     start_date: date,
+    advance: Decimal = Decimal("0"),
+    payday: int | None = None,
 ) -> list[ScheduleItem]:
-    """
-    Murabaha: total = principal + markup (fixed at deal creation).
-    Equal monthly instalments: total / duration_months.
-    Last instalment absorbs rounding difference.
-    """
     total = principal + markup
-    base_payment = _round(total / duration_months)
-    schedule: list[ScheduleItem] = []
-
-    accumulated = Decimal("0")
-    for i in range(1, duration_months + 1):
-        due = start_date + relativedelta(months=i)
-        if i < duration_months:
-            amount = base_payment
-        else:
-            amount = _round(total - accumulated)
-        accumulated += amount
-        schedule.append(
-            ScheduleItem(
-                installment_number=i,
-                due_date=due,
-                amount=amount,
-                installment_type="principal",
-            )
-        )
-    return schedule
+    payday_val = payday if payday is not None else start_date.day
+    return generate_murabaha_schedule_bot(
+        total=total,
+        advance=advance,
+        duration_months=duration_months,
+        start_date=start_date,
+        payday=payday_val,
+    )
 
 
 def generate_ijara_schedule(
@@ -93,11 +109,15 @@ def generate_ijara_schedule(
 def generate_schedule(deal_type: str, params: dict, start_date: date) -> list[ScheduleItem]:
     """Dispatcher: returns schedule for any deal type from its params dict."""
     if deal_type == "murabaha":
+        advance = Decimal(str(params.get("down_payment_amount") or 0))
+        payday = int(params["payday"]) if params.get("payday") is not None else start_date.day
         return generate_murabaha_schedule(
             principal=Decimal(str(params["principal"])),
             markup=Decimal(str(params["markup"])),
             duration_months=int(params["duration_months"]),
             start_date=start_date,
+            advance=advance,
+            payday=payday,
         )
     elif deal_type == "ijara":
         buyout = Decimal(str(params["buyout_amount"])) if params.get("buyout_amount") else None

@@ -33,6 +33,7 @@ from backend.schemas.sb import (
     PaymentScheduleBrief,
     SbCaseContextResponse,
     SbDashboardResponse,
+    SbStageCaseBrief,
     SbStatsResponse,
     SbTodayWorkItem,
     SbTodayWorkResponse,
@@ -100,6 +101,8 @@ async def list_cases(
     amount_min: float | None = None,
     amount_max: float | None = None,
     red_zone_only: bool = False,
+    collection_stage: int | None = None,
+    collection_stage_min: int | None = None,
     q: str | None = Query(None, min_length=2),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -116,17 +119,36 @@ async def list_cases(
     await db.commit()
 
     query = (
-        select(OverdueCase, Client.full_name, Client.phone)
+        select(OverdueCase, Client.full_name, Client.phone, Deal.manager_id, User.name.label("manager_name"))
         .join(Deal, OverdueCase.deal_id == Deal.id)
         .join(Client, Deal.client_id == Client.id)
+        .join(User, Deal.manager_id == User.id)
         .where(OverdueCase.status != OverdueCaseStatus.closed)
     )
+    if current_user.role == UserRole.sb:
+        from backend.services.debt_collection_stage_service import (
+            load_debt_stage_settings,
+            resolve_sb_collection_stage,
+        )
+
+        stage_settings = await load_debt_stage_settings(db)
+        assigned_stage = resolve_sb_collection_stage(current_user.id, stage_settings)
+        query = query.where(OverdueCase.sb_user_id == current_user.id)
+        if assigned_stage is not None:
+            query = query.where(OverdueCase.collection_stage == assigned_stage)
+        else:
+            query = query.where(OverdueCase.collection_stage >= 2)
+    else:
+        stage_min = collection_stage_min if collection_stage_min is not None else 1
+        query = query.where(OverdueCase.collection_stage >= stage_min)
+        if collection_stage is not None:
+            query = query.where(OverdueCase.collection_stage == collection_stage)
+        if unassigned:
+            query = query.where(OverdueCase.sb_user_id.is_(None))
+        elif sb_user_id:
+            query = query.where(OverdueCase.sb_user_id == sb_user_id)
     if status_filter:
         query = query.where(OverdueCase.status == status_filter)
-    if unassigned:
-        query = query.where(OverdueCase.sb_user_id.is_(None))
-    elif sb_user_id:
-        query = query.where(OverdueCase.sb_user_id == sb_user_id)
     if days_overdue_min is not None:
         query = query.where(OverdueCase.days_overdue >= days_overdue_min)
     if days_overdue_max is not None:
@@ -145,22 +167,22 @@ async def list_cases(
     if red_zone_only:
         all_rows = (await db.execute(query)).all()
         filtered = []
-        for case, client_name, client_phone in all_rows:
+        for case, client_name, client_phone, manager_id, manager_name in all_rows:
             if await _case_is_red_zone(db, case.id, case.status, red_cutoff):
-                filtered.append((case, client_name, client_phone))
+                filtered.append((case, client_name, client_phone, manager_id, manager_name))
         total = len(filtered)
         page_rows = filtered[offset : offset + limit]
     else:
         total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
         page_rows = (await db.execute(query.limit(limit).offset(offset))).all()
 
-    deal_ids = list({case.deal_id for case, _, _ in page_rows})
+    deal_ids = list({case.deal_id for case, _, _, _, _ in page_rows})
     if deal_ids:
         await refresh_open_cases_for_deals(db, deal_ids)
         await db.commit()
 
     items = []
-    for case, client_name, client_phone in page_rows:
+    for case, client_name, client_phone, manager_id, manager_name in page_rows:
         await db.refresh(case)
         if case.status == OverdueCaseStatus.closed:
             continue
@@ -168,6 +190,8 @@ async def list_cases(
         resp.is_red_zone = await _case_is_red_zone(db, case.id, case.status, red_cutoff)
         resp.client_name = client_name
         resp.client_phone = client_phone
+        resp.manager_id = manager_id
+        resp.manager_name = manager_name
         items.append(resp)
 
     return PaginatedResponse(
@@ -231,6 +255,11 @@ async def assign_case(
     case = await db.get(OverdueCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Дело не найдено")
+    if case.collection_stage < 2 and current_user.role == UserRole.sb:
+        raise HTTPException(
+            status_code=400,
+            detail="На этапе 1 дело ведёт менеджер сделки",
+        )
 
     sb_user = await db.get(User, body.sb_user_id)
     if not sb_user or sb_user.role.value not in ("sb", "director"):
@@ -505,9 +534,46 @@ async def sb_dashboard(
             select(func.count())
             .select_from(OverdueCase)
             .where(OverdueCase.sb_user_id.is_(None))
+            .where(OverdueCase.collection_stage >= 2)
             .where(OverdueCase.status != OverdueCaseStatus.closed)
         )
     ).scalar_one()
+
+    from backend.services.debt_collection_stage_service import (
+        load_debt_stage_settings,
+        resolve_sb_collection_stage,
+    )
+
+    stage_settings = await load_debt_stage_settings(db)
+    assigned_stage = (
+        resolve_sb_collection_stage(user_id, stage_settings)
+        if current_user.role == UserRole.sb
+        else None
+    )
+    stage_open_cases: list[SbStageCaseBrief] = []
+    if assigned_stage is not None:
+        stage_rows = await db.execute(
+            select(OverdueCase, Client.full_name)
+            .join(Deal, OverdueCase.deal_id == Deal.id)
+            .join(Client, Deal.client_id == Client.id)
+            .where(OverdueCase.sb_user_id == user_id)
+            .where(OverdueCase.collection_stage == assigned_stage)
+            .where(OverdueCase.status != OverdueCaseStatus.closed)
+            .order_by(OverdueCase.days_overdue.desc())
+            .limit(10)
+        )
+        stage_open_cases = [
+            SbStageCaseBrief(
+                case_id=case.id,
+                deal_id=case.deal_id,
+                client_name=client_name,
+                days_overdue=case.days_overdue,
+                total_debt=Decimal(str(case.total_debt)),
+                overdue_installments_count=case.overdue_installments_count,
+                collection_stage=case.collection_stage,
+            )
+            for case, client_name in stage_rows.all()
+        ]
 
     return SbDashboardResponse(
         my_cases_new=counts.get("new", 0),
@@ -519,6 +585,8 @@ async def sb_dashboard(
         recovered_this_month=Decimal(str(recovered)),
         red_zone_cases=red_zone_count,
         unassigned_cases_total=unassigned_total,
+        assigned_collection_stage=assigned_stage,
+        stage_open_cases=stage_open_cases,
     )
 
 
@@ -596,6 +664,7 @@ async def sb_dashboard_today(
         await db.execute(
             select(OverdueCase)
             .where(OverdueCase.sb_user_id.is_(None))
+            .where(OverdueCase.collection_stage >= 2)
             .where(OverdueCase.status != OverdueCaseStatus.closed)
             .order_by(OverdueCase.total_debt.desc())
             .limit(10)

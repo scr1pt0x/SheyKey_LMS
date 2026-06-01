@@ -60,6 +60,37 @@ export const OVERDUE_STATUS_LABELS: Record<string, string> = {
   closed: "Закрыто",
 };
 
+export const COLLECTION_STAGE_LABELS: Record<number, string> = {
+  1: "Этап 1 — менеджер",
+  2: "Этап 2 — Шамиль",
+  3: "Этап 3 — Усман",
+  4: "Этап 4 — Докка",
+};
+
+/** Плашка на «Просрочниках»: зона ответственности этого СБ */
+export const SB_STAGE_INFO_HINT: Record<number, string> = {
+  2: "Ранняя просрочка после менеджера: от 30 дней и 2 неоплаченных платежей. Новые дела появляются здесь и назначаются на вас автоматически.",
+  3: "Усиленное взыскание: от 60 дней и 3 неоплаченных платежей. Дела на этом этапе назначаются на вас автоматически.",
+  4: "Критичная просрочка: 90 дней и более без погашения. Такие дела назначаются на вас автоматически.",
+};
+
+/** Когда на этапе пока нет дел (список / дашборд) */
+export const SB_STAGE_EMPTY_HINT: Record<number, string> = {
+  2: "Сейчас дел на этапе 2 нет.",
+  3: "Сейчас дел на этапе 3 нет.",
+  4: "Сейчас дел на этапе 4 нет.",
+};
+
+/** Заголовок блока для сотрудника СБ (без имени другого этапа) */
+export function sbStageBannerTitle(stage: number): string {
+  return `Просрочка, этап ${stage}`;
+}
+
+export function sbStageSectionTitle(stage: number): string {
+  const label = COLLECTION_STAGE_LABELS[stage] ?? `Этап ${stage}`;
+  return `Просрочка, ${label}`;
+}
+
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: "Наличные",
   transfer: "Перевод",

@@ -9,13 +9,54 @@ import { getErrorMessage } from "@/lib/axios";
 import { Settings } from "lucide-react";
 
 const SETTINGS_KEYS = [
-  { key: "sb_threshold_days",          label: "Порог передачи в СБ (дней просрочки)",    type: "number",  group: "Основные" },
-  { key: "red_zone_days",              label: "Красная зона (дней без контакта)",          type: "number",  group: "Основные" },
-  { key: "murabaha_default_markup_pct",label: "Наценка Мурабаха по умолчанию (%)",         type: "number",  group: "Сделки" },
+  {
+    key: "red_zone_days",
+    label: "Красная зона: дней без контакта по делу (СБ)",
+    hint: "Не этап просрочки и не передача в СБ — только давность последнего контакта с клиентом.",
+    type: "number",
+    group: "Основные",
+  },
+  {
+    key: "murabaha_rate_with_down_pct",
+    label: "Мурабаха: % в месяц со взносом (потребительские, телефоны)",
+    type: "number",
+    group: "Мурабаха",
+  },
+  {
+    key: "murabaha_rate_without_down_pct",
+    label: "Мурабаха: % в месяц без взноса (потребительские, телефоны)",
+    type: "number",
+    group: "Мурабаха",
+  },
+  {
+    key: "murabaha_rate_auto_pct",
+    label: "Мурабаха: % в месяц (авто, только со взносом)",
+    type: "number",
+    group: "Мурабаха",
+  },
+  {
+    key: "murabaha_seller_fio",
+    label: "Мурабаха: ФИО продавца в договоре",
+    type: "text",
+    group: "Мурабаха",
+  },
   { key: "director_email",             label: "Email руководителя (автоотчёты)",           type: "text",    group: "Уведомления" },
   { key: "sms_api_key",                label: "SMS.ru — API ключ",                         type: "text",    group: "Уведомления" },
   { key: "sms_from",                   label: "SMS.ru — Имя отправителя",                  type: "text",    group: "Уведомления" },
   { key: "manager_bonus_pct",          label: "Бонус менеджерам от прибыли (%)",           type: "number",  group: "Прибыль" },
+  { key: "debt_stage_2_days",          label: "Этап 2: мин. дней просрочки",               type: "number",  group: "Этапы долга" },
+  { key: "debt_stage_2_installments",  label: "Этап 2: мин. просроченных платежей",        type: "number",  group: "Этапы долга" },
+  { key: "debt_stage_3_days",          label: "Этап 3: мин. дней просрочки",               type: "number",  group: "Этапы долга" },
+  { key: "debt_stage_3_installments",  label: "Этап 3: мин. просроченных платежей",        type: "number",  group: "Этапы долга" },
+  { key: "debt_stage_4_days",          label: "Этап 4: мин. дней просрочки",               type: "number",  group: "Этапы долга" },
+  { key: "debt_stage_2_sb_user_id",    label: "Этап 2: UUID сотрудника (Шамиль)",          type: "text",    group: "Этапы долга" },
+  { key: "debt_stage_3_sb_user_id",    label: "Этап 3: UUID сотрудника (Усман)",           type: "text",    group: "Этапы долга" },
+  { key: "debt_stage_4_sb_user_id",    label: "Этап 4: UUID сотрудника (Докка)",           type: "text",    group: "Этапы долга" },
+  { key: "manager_payment_commission_pct", label: "% менеджера с оплаты (этапы 1–2)",      type: "number",  group: "Комиссии с оплат" },
+  { key: "manager_payment_commission_from_stage_3_pct", label: "% менеджера с оплаты (этап 3+)", type: "number", group: "Комиссии с оплат" },
+  { key: "sb_commission_stage_2_pct",  label: "% СБ с оплаты (этап 2)",                    type: "number",  group: "Комиссии с оплат" },
+  { key: "sb_commission_stage_3_pct",  label: "% СБ с оплаты (этап 3)",                    type: "number",  group: "Комиссии с оплат" },
+  { key: "sb_commission_stage_4_pct",  label: "% СБ с оплаты (этап 4)",                    type: "number",  group: "Комиссии с оплат" },
 ];
 
 export default function SettingsPage() {
@@ -56,7 +97,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="bg-white rounded-xl border divide-y">
-        {SETTINGS_KEYS.map(({ key, label, type, group }, idx) => {
+        {SETTINGS_KEYS.map(({ key, label, type, hint }, idx) => {
           const query = settingsData[idx];
           const currentValue = query.data?.value ?? "";
           const editValue = editValues[key];
@@ -66,6 +107,7 @@ export default function SettingsPage() {
             <div key={key} className="p-5 flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm">{label}</p>
+                {hint && <p className="text-xs text-gray-500 mt-0.5">{hint}</p>}
                 <p className="text-xs text-gray-400 font-mono">{key}</p>
               </div>
               <div className="flex items-center gap-3">

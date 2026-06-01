@@ -13,6 +13,18 @@ export interface ManagerDashboard {
   schedules_today: ScheduledPaymentBrief[];
   schedules_week: ScheduledPaymentBrief[];
   overdue_deals_list: DealBrief[];
+  stage1_overdue_cases: Stage1OverdueBrief[];
+}
+
+export interface Stage1OverdueBrief {
+  case_id: string;
+  deal_id: string;
+  client_id: string;
+  type: string;
+  total: number | string;
+  days_overdue: number;
+  total_debt: number | string;
+  overdue_installments_count: number;
 }
 
 export interface ScheduledPaymentBrief {

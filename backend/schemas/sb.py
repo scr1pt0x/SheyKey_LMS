@@ -18,6 +18,11 @@ class OverdueCaseResponse(BaseModel):
     closed_at: datetime | None
     total_debt: Decimal
     days_overdue: int
+    collection_stage: int = 1
+    overdue_installments_count: int = 0
+    stage_changed_at: datetime | None = None
+    manager_id: uuid.UUID | None = None
+    manager_name: str | None = None
     created_at: datetime
     updated_at: datetime
     is_red_zone: bool | None = None
@@ -74,6 +79,16 @@ class PaymentPromiseResponse(BaseModel):
     created_at: datetime
 
 
+class SbStageCaseBrief(BaseModel):
+    case_id: uuid.UUID
+    deal_id: uuid.UUID
+    client_name: str | None = None
+    days_overdue: int
+    total_debt: Decimal
+    overdue_installments_count: int
+    collection_stage: int
+
+
 class SbDashboardResponse(BaseModel):
     my_cases_new: int
     my_cases_in_progress: int
@@ -84,6 +99,8 @@ class SbDashboardResponse(BaseModel):
     recovered_this_month: Decimal
     red_zone_cases: int
     unassigned_cases_total: int = 0
+    assigned_collection_stage: int | None = None
+    stage_open_cases: list[SbStageCaseBrief] = []
 
 
 class SbTodayWorkItem(BaseModel):

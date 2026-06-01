@@ -2,6 +2,7 @@ from .user import User, UserRole
 from .client import Client
 from .deal import Deal, DealType, DealStatus, DealParam
 from .payment import PaymentSchedule, Payment, PaymentStatus, PaymentMethod
+from .payment_commission import PaymentCommissionSplit
 from .overdue import OverdueCase, OverdueCaseStatus, ContactLog, ContactType, PaymentPromise
 from .document import Document, DocumentEntityType, DocumentType
 from .notification import NotificationLog, NotificationChannel, NotificationStatus
@@ -21,6 +22,7 @@ __all__ = [
     "Client",
     "Deal", "DealType", "DealStatus", "DealParam",
     "PaymentSchedule", "Payment", "PaymentStatus", "PaymentMethod",
+    "PaymentCommissionSplit",
     "OverdueCase", "OverdueCaseStatus", "ContactLog", "ContactType", "PaymentPromise",
     "Document", "DocumentEntityType", "DocumentType",
     "NotificationLog", "NotificationChannel", "NotificationStatus",

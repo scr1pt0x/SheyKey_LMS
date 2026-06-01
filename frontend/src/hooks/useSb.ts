@@ -10,6 +10,11 @@ export interface OverdueCase {
   closed_at: string | null;
   total_debt: string;
   days_overdue: number;
+  collection_stage?: number;
+  overdue_installments_count?: number;
+  stage_changed_at?: string | null;
+  manager_id?: string | null;
+  manager_name?: string | null;
   created_at: string;
   updated_at: string;
   is_red_zone?: boolean;
@@ -75,6 +80,16 @@ export interface PaymentPromise {
   created_at: string;
 }
 
+export interface SbStageCaseBrief {
+  case_id: string;
+  deal_id: string;
+  client_name: string | null;
+  days_overdue: number;
+  total_debt: string;
+  overdue_installments_count: number;
+  collection_stage: number;
+}
+
 export interface SbDashboard {
   my_cases_new: number;
   my_cases_in_progress: number;
@@ -85,6 +100,8 @@ export interface SbDashboard {
   recovered_this_month: string;
   red_zone_cases: number;
   unassigned_cases_total: number;
+  assigned_collection_stage?: number | null;
+  stage_open_cases?: SbStageCaseBrief[];
 }
 
 export function useOverdueCases(params: Record<string, unknown> = {}) {

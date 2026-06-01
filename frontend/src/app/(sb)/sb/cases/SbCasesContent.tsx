@@ -3,11 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useOverdueCases, useTakeCase } from "@/hooks/useSb";
+import { useOverdueCases, useSbDashboard, useTakeCase } from "@/hooks/useSb";
 import { useAuthStore } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, OVERDUE_STATUS_LABELS } from "@/lib/utils";
+import {
+  formatCurrency,
+  OVERDUE_STATUS_LABELS,
+  COLLECTION_STAGE_LABELS,
+  SB_STAGE_EMPTY_HINT,
+  SB_STAGE_INFO_HINT,
+  sbStageBannerTitle,
+} from "@/lib/utils";
 import { toast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/axios";
 import { AlertTriangle } from "lucide-react";
@@ -27,6 +34,7 @@ type QueueFilter = "all" | "unassigned" | "mine";
 export default function SbCasesContent() {
   const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
+  const isSbRole = user?.role === "sb";
   const [status, setStatus] = useState("");
   const [queue, setQueue] = useState<QueueFilter>("all");
   const [offset, setOffset] = useState(0);
@@ -39,11 +47,11 @@ export default function SbCasesContent() {
   const takeCase = useTakeCase();
 
   useEffect(() => {
-    if (searchParams.get("unassigned") === "1") {
+    if (!isSbRole && searchParams.get("unassigned") === "1") {
       setQueue("unassigned");
       setOffset(0);
     }
-  }, [searchParams]);
+  }, [searchParams, isSbRole]);
 
   const queryParams: Record<string, unknown> = {
     status: status || undefined,
@@ -56,13 +64,17 @@ export default function SbCasesContent() {
     red_zone_only: redZoneOnly || undefined,
     q: searchQ.trim().length >= 2 ? searchQ.trim() : undefined,
   };
-  if (queue === "unassigned") {
-    queryParams.unassigned = true;
-  } else if (queue === "mine" && user?.id) {
-    queryParams.sb_user_id = user.id;
+  if (!isSbRole) {
+    if (queue === "unassigned") {
+      queryParams.unassigned = true;
+    } else if (queue === "mine" && user?.id) {
+      queryParams.sb_user_id = user.id;
+    }
   }
 
   const { data, isLoading } = useOverdueCases(queryParams);
+  const { data: sbDash } = useSbDashboard();
+  const myStage = sbDash?.assigned_collection_stage;
 
   function handleTake(caseId: string, e: React.MouseEvent) {
     e.preventDefault();
@@ -80,6 +92,16 @@ export default function SbCasesContent() {
         <h1 className="text-xl font-bold">Просрочники</h1>
       </div>
 
+      {myStage != null && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+          <p className="font-medium">{sbStageBannerTitle(myStage)}</p>
+          <p className="text-amber-800/90 mt-1">
+            {SB_STAGE_INFO_HINT[myStage] ??
+              "Дела на вашем этапе назначаются автоматически."}
+          </p>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border p-4 space-y-3">
         <ClientSearchField
           variant="page"
@@ -91,24 +113,26 @@ export default function SbCasesContent() {
           }}
         />
         <div className="flex flex-wrap gap-3">
-        <div className="flex rounded-lg border overflow-hidden text-sm">
-          {(
-            [
-              ["all", "Все"],
-              ["unassigned", "Неназначенные"],
-              ["mine", "Мои"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => { setQueue(value); setOffset(0); }}
-              className={`px-3 py-2 ${queue === value ? "bg-[#1a3a5c] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {!isSbRole && (
+          <div className="flex rounded-lg border overflow-hidden text-sm">
+            {(
+              [
+                ["all", "Все"],
+                ["unassigned", "Неназначенные"],
+                ["mine", "Мои"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => { setQueue(value); setOffset(0); }}
+                className={`px-3 py-2 ${queue === value ? "bg-[#1a3a5c] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setOffset(0); }}
@@ -174,17 +198,19 @@ export default function SbCasesContent() {
                     <Badge className={STATUS_COLORS[c.status]}>
                       {OVERDUE_STATUS_LABELS[c.status]}
                     </Badge>
+                    {!isSbRole && c.collection_stage != null && (
+                      <Badge className="bg-slate-100 text-slate-800">
+                        {COLLECTION_STAGE_LABELS[c.collection_stage] ?? `Этап ${c.collection_stage}`}
+                      </Badge>
+                    )}
                     {c.is_red_zone && (
                       <span className="text-xs text-red-600 font-medium">Красная зона</span>
-                    )}
-                    {!c.sb_user_id && (
-                      <span className="text-xs text-orange-600 font-medium">Не назначен</span>
                     )}
                   </div>
                   <p className="text-xl font-bold text-red-600 mt-1">{formatCurrency(c.total_debt)}</p>
                   <p className="text-sm text-gray-500">{c.days_overdue} дн. просрочки</p>
                 </Link>
-                {!c.sb_user_id && (
+                {!isSbRole && !c.sb_user_id && (
                   <Button
                     size="sm"
                     className="mt-3 w-full"
@@ -197,7 +223,11 @@ export default function SbCasesContent() {
               </div>
             ))}
             {!data?.items.length && (
-              <p className="text-center text-gray-500 py-8">Дел нет</p>
+              <p className="text-center text-gray-500 py-8 px-4">
+                {myStage != null && SB_STAGE_EMPTY_HINT[myStage]
+                  ? SB_STAGE_EMPTY_HINT[myStage]
+                  : "Дел нет"}
+              </p>
             )}
           </div>
 
@@ -210,7 +240,9 @@ export default function SbCasesContent() {
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Статус</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Долг</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Дней просрочки</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Назначен</th>
+                    {!isSbRole && (
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Назначен</th>
+                    )}
                     <th />
                   </tr>
                 </thead>
@@ -220,15 +252,22 @@ export default function SbCasesContent() {
                       <td className="px-4 py-3 font-medium">{c.client_name ?? "—"}</td>
                       <td className="px-4 py-3">
                         <Badge className={STATUS_COLORS[c.status]}>{OVERDUE_STATUS_LABELS[c.status]}</Badge>
+                        {!isSbRole && c.collection_stage != null && (
+                          <Badge className="ml-1 bg-slate-100 text-slate-800">
+                            {COLLECTION_STAGE_LABELS[c.collection_stage] ?? `Этап ${c.collection_stage}`}
+                          </Badge>
+                        )}
                         {c.is_red_zone && (
                           <span className="ml-1 text-xs text-red-600">Красная</span>
                         )}
                       </td>
                       <td className="px-4 py-3 font-semibold text-red-600">{formatCurrency(c.total_debt)}</td>
                       <td className="px-4 py-3 font-medium">{c.days_overdue} дн.</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{c.sb_user_id ? "Назначен" : "Не назначен"}</td>
+                      {!isSbRole && (
+                        <td className="px-4 py-3 text-gray-500 text-xs">{c.sb_user_id ? "Назначен" : "Не назначен"}</td>
+                      )}
                       <td className="px-4 py-3 flex gap-2 justify-end">
-                        {!c.sb_user_id && (
+                        {!isSbRole && !c.sb_user_id && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -248,7 +287,13 @@ export default function SbCasesContent() {
                     </tr>
                   ))}
                   {!data?.items.length && (
-                    <tr><td colSpan={5} className="text-center py-8 text-gray-500">Дел нет</td></tr>
+                    <tr>
+                      <td colSpan={isSbRole ? 5 : 6} className="text-center py-8 text-gray-500 px-4">
+                        {myStage != null && SB_STAGE_EMPTY_HINT[myStage]
+                          ? SB_STAGE_EMPTY_HINT[myStage]
+                          : "Дел нет"}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

@@ -86,9 +86,11 @@ const ROLE_RU: Record<string, string> = {
 };
 
 const SETTING_KEY_RU: Record<string, string> = {
-  sb_threshold_days: "Порог передачи в СБ",
   red_zone_days: "Красная зона (дней без контакта)",
-  murabaha_default_markup_pct: "Наценка Мурабаха по умолчанию",
+  murabaha_rate_with_down_pct: "Мурабаха: % в месяц со взносом",
+  murabaha_rate_without_down_pct: "Мурабаха: % в месяц без взноса",
+  murabaha_rate_auto_pct: "Мурабаха: % в месяц (авто)",
+  murabaha_seller_fio: "Мурабаха: ФИО продавца",
   notification_templates: "Шаблоны уведомлений",
   sms_api_key: "SMS.ru — API ключ",
   sms_from: "SMS.ru — отправитель",

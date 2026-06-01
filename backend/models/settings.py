@@ -32,22 +32,49 @@ class SystemSetting(Base):
 
 # Default system settings keys
 class SettingKey:
-    SB_THRESHOLD_DAYS = "sb_threshold_days"
     NOTIFICATION_TEMPLATES = "notification_templates"
     SMS_API_KEY = "sms_api_key"
     SMS_FROM = "sms_from"
     TG_BOT_URL = "tg_bot_url"
     BOT_SECRET = "bot_secret"
-    MURABAHA_DEFAULT_MARKUP_PCT = "murabaha_default_markup_pct"
+    MURABAHA_RATE_WITH_DOWN_PCT = "murabaha_rate_with_down_pct"
+    MURABAHA_RATE_WITHOUT_DOWN_PCT = "murabaha_rate_without_down_pct"
+    MURABAHA_RATE_AUTO_PCT = "murabaha_rate_auto_pct"
+    MURABAHA_SELLER_FIO = "murabaha_seller_fio"
     IJARA_DEFAULT_PARAMS = "ijara_default_params"
     RED_ZONE_DAYS = "red_zone_days"
     DIRECTOR_EMAIL = "director_email"
     MANAGER_BONUS_PCT = "manager_bonus_pct"
+    DEBT_STAGE_2_DAYS = "debt_stage_2_days"
+    DEBT_STAGE_2_INSTALLMENTS = "debt_stage_2_installments"
+    DEBT_STAGE_3_DAYS = "debt_stage_3_days"
+    DEBT_STAGE_3_INSTALLMENTS = "debt_stage_3_installments"
+    DEBT_STAGE_4_DAYS = "debt_stage_4_days"
+    DEBT_STAGE_2_SB_USER_ID = "debt_stage_2_sb_user_id"
+    DEBT_STAGE_3_SB_USER_ID = "debt_stage_3_sb_user_id"
+    DEBT_STAGE_4_SB_USER_ID = "debt_stage_4_sb_user_id"
+    MANAGER_PAYMENT_COMMISSION_PCT = "manager_payment_commission_pct"
+    MANAGER_PAYMENT_COMMISSION_FROM_STAGE_3_PCT = "manager_payment_commission_from_stage_3_pct"
+    SB_COMMISSION_STAGE_2_PCT = "sb_commission_stage_2_pct"
+    SB_COMMISSION_STAGE_3_PCT = "sb_commission_stage_3_pct"
+    SB_COMMISSION_STAGE_4_PCT = "sb_commission_stage_4_pct"
 
     DEFAULTS: dict = {
-        SB_THRESHOLD_DAYS: 7,
         RED_ZONE_DAYS: 14,
-        MURABAHA_DEFAULT_MARKUP_PCT: 15,
+        MURABAHA_RATE_WITH_DOWN_PCT: 4,
+        MURABAHA_RATE_WITHOUT_DOWN_PCT: 5,
+        MURABAHA_RATE_AUTO_PCT: 3.3,
+        MURABAHA_SELLER_FIO: "SheyKey Finance",
+        DEBT_STAGE_2_DAYS: 30,
+        DEBT_STAGE_2_INSTALLMENTS: 2,
+        DEBT_STAGE_3_DAYS: 60,
+        DEBT_STAGE_3_INSTALLMENTS: 3,
+        DEBT_STAGE_4_DAYS: 90,
+        MANAGER_PAYMENT_COMMISSION_PCT: 0,
+        MANAGER_PAYMENT_COMMISSION_FROM_STAGE_3_PCT: 0,
+        SB_COMMISSION_STAGE_2_PCT: 0,
+        SB_COMMISSION_STAGE_3_PCT: 0,
+        SB_COMMISSION_STAGE_4_PCT: 0,
         NOTIFICATION_TEMPLATES: {
             "reminder_3d": "Уважаемый {name}, напоминаем о платеже {amount} ₽, ожидаемом {date}.",
             "reminder_1d": "Уважаемый {name}, завтра {date} ожидается платёж {amount} ₽.",

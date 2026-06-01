@@ -566,6 +566,7 @@ async def reassign_managers(
 @router.get("/sb-control")
 async def sb_control(
     status_filter: str | None = None,
+    collection_stage: int | None = None,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -592,6 +593,8 @@ async def sb_control(
         .subquery()
     )
 
+    from backend.models.deal import Deal
+
     query = (
         select(
             OverdueCase.id,
@@ -600,35 +603,54 @@ async def sb_control(
             OverdueCase.status,
             OverdueCase.total_debt,
             OverdueCase.days_overdue,
+            OverdueCase.collection_stage,
+            OverdueCase.overdue_installments_count,
             OverdueCase.created_at,
             last_contact_subq.c.last_contact,
             User.name.label("sb_name"),
+            Deal.manager_id,
         )
+        .join(Deal, OverdueCase.deal_id == Deal.id)
         .outerjoin(last_contact_subq, OverdueCase.id == last_contact_subq.c.case_id)
         .outerjoin(User, OverdueCase.sb_user_id == User.id)
     )
     if status_filter:
         query = query.where(OverdueCase.status == status_filter)
+    if collection_stage is not None:
+        query = query.where(OverdueCase.collection_stage == collection_stage)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
 
-    rows = await db.execute(
-        query
-        .order_by(OverdueCase.total_debt.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+    page_rows = (
+        await db.execute(
+            query.order_by(OverdueCase.total_debt.desc()).limit(limit).offset(offset)
+        )
+    ).all()
+    manager_ids = {row.manager_id for row in page_rows if row.manager_id}
+    manager_names: dict = {}
+    if manager_ids:
+        mgr_rows = await db.execute(select(User.id, User.name).where(User.id.in_(manager_ids)))
+        manager_names = {r.id: r.name for r in mgr_rows.all()}
+
     items = []
-    for row in rows.all():
+    for row in page_rows:
         is_red_zone = (
             row.last_contact is None
             or row.last_contact < red_cutoff
         ) and row.status in ("new", "in_progress")
+        stage = row.collection_stage
+        if stage == 1:
+            responsible = manager_names.get(row.manager_id, "Менеджер")
+        else:
+            responsible = row.sb_name or "Не назначен"
         items.append({
             "id": str(row.id),
             "deal_id": str(row.deal_id),
             "sb_user_id": str(row.sb_user_id) if row.sb_user_id else None,
             "sb_name": row.sb_name or "Не назначен",
+            "responsible_name": responsible,
+            "collection_stage": stage,
+            "overdue_installments_count": row.overdue_installments_count,
             "status": row.status.value if hasattr(row.status, "value") else row.status,
             "total_debt": float(row.total_debt),
             "days_overdue": row.days_overdue,

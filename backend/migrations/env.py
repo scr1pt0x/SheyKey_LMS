@@ -34,6 +34,7 @@ from backend.models import (  # noqa: F401
     NotificationLog,
     OverdueCase,
     Payment,
+    PaymentCommissionSplit,
     PaymentPromise,
     PaymentSchedule,
     ProfitDistribution,

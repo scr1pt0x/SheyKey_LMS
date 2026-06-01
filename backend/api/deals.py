@@ -20,6 +20,8 @@ from backend.schemas.deal import (
     DealListItem,
     DealResponse,
     DealUpdate,
+    MurabahaQuoteResponse,
+    MurabahaTariffOptionsResponse,
     ScheduleItemResponse,
 )
 from backend.services.audit_service import AuditService
@@ -143,6 +145,66 @@ async def list_deals(
     )
 
 
+@router.get("/murabaha/quote", response_model=MurabahaQuoteResponse)
+async def murabaha_quote(
+    category: str = Query(..., pattern="^(consumer|phones|auto)$"),
+    amount: float = Query(..., gt=0),
+    term: int = Query(..., ge=1, le=360),
+    tariff: str = Query(
+        ...,
+        pattern="^(NO_DOWNPAYMENT|NO_GUARANTOR|ONE_GUARANTOR|TWO_GUARANTORS)$",
+    ),
+    down_pct: int = Query(..., ge=0, le=90),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("manager", "director")),
+) -> MurabahaQuoteResponse:
+    from backend.services.murabaha_tariff_service import (
+        compute_murabaha_quote,
+        load_murabaha_rate_settings,
+    )
+
+    try:
+        rates = await load_murabaha_rate_settings(db)
+        q = compute_murabaha_quote(
+            category=category,
+            amount=amount,
+            term_months=term,
+            tariff=tariff,
+            down_payment_pct=down_pct,
+            rates=rates,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return MurabahaQuoteResponse(
+        product_category=q.product_category,
+        tariff=q.tariff,
+        principal=q.principal,
+        markup=q.markup,
+        total=q.total,
+        down_payment_pct=q.down_payment_pct,
+        down_payment_amount=q.down_payment_amount,
+        financed_amount=q.financed_amount,
+        monthly_payment=q.monthly_payment,
+        duration_months=q.duration_months,
+        rate_per_month_pct=q.rate_per_month_pct,
+    )
+
+
+@router.get("/murabaha/tariff-options", response_model=MurabahaTariffOptionsResponse)
+async def murabaha_tariff_options(
+    category: str = Query(..., pattern="^(consumer|phones|auto)$"),
+    amount: float = Query(..., gt=0),
+    current_user: User = Depends(require_role("manager", "director")),
+) -> MurabahaTariffOptionsResponse:
+    from backend.services.murabaha_tariff_service import tariff_options_payload
+
+    try:
+        payload = tariff_options_payload(category, amount)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return MurabahaTariffOptionsResponse.model_validate(payload)
+
+
 @router.post("", response_model=DealResponse, status_code=status.HTTP_201_CREATED)
 async def create_deal(
     body: DealCreate,
@@ -156,16 +218,56 @@ async def create_deal(
     if not client:
         raise HTTPException(status_code=404, detail="Клиент не найден")
     if body.type == DealType.murabaha and body.murabaha:
+        from backend.services.murabaha_tariff_service import (
+            load_murabaha_rate_settings,
+            validate_murabaha_deal,
+        )
+
         p = body.murabaha
+        rates = await load_murabaha_rate_settings(db)
+        try:
+            quote = validate_murabaha_deal(
+                category=p.product_category,
+                amount=p.principal,
+                term_months=p.duration_months,
+                tariff=p.tariff,
+                down_payment_pct=p.down_payment_pct,
+                principal=p.principal,
+                markup=p.markup,
+                rates=rates,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        from backend.services.contract_number_service import allocate_contract_number
+
+        item_qty = p.item_qty
         principal = p.principal
         markup = p.markup
-        total = principal + markup
+        total = principal * item_qty + markup * item_qty if item_qty > 1 else principal + markup
         duration_months = p.duration_months
         start_date = p.start_date
+        payday = p.payday if p.payday else start_date.day
+        contract_number = await allocate_contract_number(db, start_date)
+
+        guarantor_name = (p.guarantor_name or "").strip() or "—"
+        guarantor_phone = (p.guarantor_phone or "").strip() or "—"
+
         params_data = {
             "principal": str(principal),
             "markup": str(markup),
             "duration_months": duration_months,
+            "product_category": p.product_category,
+            "tariff": p.tariff,
+            "down_payment_pct": p.down_payment_pct,
+            "down_payment_amount": str(quote.down_payment_amount),
+            "monthly_payment": str(quote.monthly_payment),
+            "item_qty": item_qty,
+            "payday": payday,
+            "pledge": p.pledge,
+            "guarantor_name": guarantor_name,
+            "guarantor_phone": guarantor_phone,
+            "contract_number": contract_number,
         }
     elif body.type == DealType.ijara and body.ijara:
         p = body.ijara
@@ -283,20 +385,59 @@ async def update_deal(
         deal.product_description = body.product_description or None
 
     if body.murabaha and deal.type == DealType.murabaha:
+        from backend.services.murabaha_tariff_service import (
+            load_murabaha_rate_settings,
+            validate_murabaha_deal,
+        )
+
         p = body.murabaha
+        rates = await load_murabaha_rate_settings(db)
+        try:
+            quote = validate_murabaha_deal(
+                category=p.product_category,
+                amount=p.principal,
+                term_months=p.duration_months,
+                tariff=p.tariff,
+                down_payment_pct=p.down_payment_pct,
+                principal=p.principal,
+                markup=p.markup,
+                rates=rates,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        item_qty = p.item_qty
         deal.principal = p.principal
         deal.markup = p.markup
-        deal.total = p.principal + p.markup
+        deal.total = p.principal * item_qty + p.markup * item_qty if item_qty > 1 else p.principal + p.markup
         deal.duration_months = p.duration_months
         deal.start_date = p.start_date
+        payday = p.payday if p.payday else p.start_date.day
+        guarantor_name = (p.guarantor_name or "").strip() or "—"
+        guarantor_phone = (p.guarantor_phone or "").strip() or "—"
         params_data = {
             "principal": str(p.principal),
             "markup": str(p.markup),
             "duration_months": p.duration_months,
+            "product_category": p.product_category,
+            "tariff": p.tariff,
+            "down_payment_pct": p.down_payment_pct,
+            "down_payment_amount": str(quote.down_payment_amount),
+            "monthly_payment": str(quote.monthly_payment),
+            "item_qty": item_qty,
+            "payday": payday,
+            "pledge": p.pledge,
+            "guarantor_name": guarantor_name,
+            "guarantor_phone": guarantor_phone,
         }
-        for param in deal.params:
-            if param.key in params_data:
-                param.value = params_data[param.key]
+        existing_keys = {param.key for param in deal.params}
+        for key, value in params_data.items():
+            if key in existing_keys:
+                for param in deal.params:
+                    if param.key == key:
+                        param.value = value
+            else:
+                db.add(DealParam(deal_id=deal.id, key=key, value=value))
         for ps in deal.payment_schedules:
             await db.delete(ps)
         await db.flush()
@@ -395,6 +536,7 @@ def _build_deal_response(deal: Deal) -> DealResponse:
         product_description=deal.product_description,
         purchase_summary=deal_purchase_summary_from_deal(deal),
         manager_name=deal.manager.name if deal.manager else None,
+        params=_deal_params_to_dict(deal) if deal.params else None,
         created_at=deal.created_at,
         updated_at=deal.updated_at,
         payment_schedules=schedules,

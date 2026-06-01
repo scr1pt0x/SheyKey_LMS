@@ -6,7 +6,7 @@ import Link from "next/link";
 import api from "@/lib/axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatCurrency, formatDateTime, OVERDUE_STATUS_LABELS } from "@/lib/utils";
+import { formatCurrency, formatDateTime, OVERDUE_STATUS_LABELS, COLLECTION_STAGE_LABELS } from "@/lib/utils";
 import { useSbPerformance, useSbPresence, useSbStaff, useTopDebtors } from "@/hooks/useDirector";
 import { useAssignCase } from "@/hooks/useSb";
 import { toast } from "@/hooks/useToast";
@@ -27,6 +27,9 @@ interface CaseRow {
   deal_id: string;
   sb_user_id: string | null;
   sb_name: string;
+  responsible_name: string;
+  collection_stage: number;
+  overdue_installments_count: number;
   status: string;
   total_debt: number;
   days_overdue: number;
@@ -37,6 +40,7 @@ interface CaseRow {
 
 export default function SbControlPage() {
   const [statusFilter, setStatusFilter] = useState("");
+  const [stageFilter, setStageFilter] = useState("");
   const [offset, setOffset] = useState(0);
   const qc = useQueryClient();
 
@@ -60,10 +64,11 @@ export default function SbControlPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["sb-control", statusFilter, offset],
+    queryKey: ["sb-control", statusFilter, stageFilter, offset],
     queryFn: async () => {
       const params: Record<string, unknown> = { limit: LIMIT, offset };
       if (statusFilter) params.status_filter = statusFilter;
+      if (stageFilter) params.collection_stage = parseInt(stageFilter, 10);
       const { data } = await api.get("/api/director/sb-control", { params });
       return data as { items: CaseRow[]; total: number };
     },
@@ -226,6 +231,16 @@ export default function SbControlPage() {
             <option key={v} value={v}>{l}</option>
           ))}
         </select>
+        <select
+          value={stageFilter}
+          onChange={(e) => { setStageFilter(e.target.value); setOffset(0); }}
+          className="px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]"
+        >
+          <option value="">Все этапы</option>
+          {[1, 2, 3, 4].map((s) => (
+            <option key={s} value={String(s)}>{COLLECTION_STAGE_LABELS[s]}</option>
+          ))}
+        </select>
         {data && (
           <span className="text-sm text-gray-500">{data.total} дел</span>
         )}
@@ -256,7 +271,10 @@ export default function SbControlPage() {
                     )}
                   </div>
                   <p className="text-lg font-bold text-red-600 mt-0.5">{formatCurrency(c.total_debt)}</p>
-                  <p className="text-xs text-gray-500">{c.days_overdue} дн.</p>
+                  <p className="text-xs text-gray-500">
+                    {c.days_overdue} дн. · {COLLECTION_STAGE_LABELS[c.collection_stage] ?? `Этап ${c.collection_stage}`}
+                  </p>
+                  <p className="text-xs text-gray-600">Ответственный: {c.responsible_name}</p>
                   <div className="mt-2" onClick={(e) => e.preventDefault()}>
                     <SbAssignSelect
                       caseId={c.id}
@@ -280,9 +298,11 @@ export default function SbControlPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Этап</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Статус</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Долг</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Дней</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Ответственный</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Сотрудник СБ</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Последний контакт</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Зона</th>
@@ -295,11 +315,15 @@ export default function SbControlPage() {
                     key={c.id}
                     className={`hover:bg-gray-50 ${c.is_red_zone ? "bg-red-50 hover:bg-red-100" : ""}`}
                   >
+                    <td className="px-4 py-3 text-xs">
+                      {COLLECTION_STAGE_LABELS[c.collection_stage] ?? c.collection_stage}
+                    </td>
                     <td className="px-4 py-3">
                       <Badge className={STATUS_COLORS[c.status]}>{OVERDUE_STATUS_LABELS[c.status]}</Badge>
                     </td>
                     <td className="px-4 py-3 font-semibold text-red-600">{formatCurrency(c.total_debt)}</td>
                     <td className="px-4 py-3 font-medium">{c.days_overdue}</td>
+                    <td className="px-4 py-3 text-sm">{c.responsible_name}</td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <SbAssignSelect
                         caseId={c.id}

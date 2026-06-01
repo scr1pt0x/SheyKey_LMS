@@ -12,6 +12,7 @@ from backend.core.dependencies import get_client_ip, require_role
 from backend.models.client import Client
 from backend.models.deal import Deal, DealStatus
 from backend.models.payment import Payment, PaymentSchedule, PaymentStatus
+from backend.models.overdue import OverdueCase, OverdueCaseStatus
 from backend.models.user import User
 from backend.schemas.manager import (
     CashLedgerItem,
@@ -21,6 +22,7 @@ from backend.schemas.manager import (
     ManagerDashboardResponse,
     ManagerStatsResponse,
     ScheduledPaymentBrief,
+    Stage1OverdueBrief,
 )
 from backend.services.audit_service import AuditService
 from backend.models.manager_cash_entry import ManagerCashEntryKind
@@ -43,8 +45,19 @@ async def manager_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("manager")),
 ) -> ManagerDashboardResponse:
+    from backend.services.overdue_case_service import sync_overdue_case_for_deal
+
     mid = _manager_id(current_user)
     today = datetime.now(timezone.utc).date()
+
+    overdue_deal_ids = (
+        await db.execute(
+            select(Deal.id).where(Deal.manager_id == mid).where(Deal.status == DealStatus.overdue)
+        )
+    ).scalars().all()
+    for deal_id in overdue_deal_ids:
+        await sync_overdue_case_for_deal(db, deal_id)
+
     week_start_date = today - timedelta(days=6)
     month_start = today.replace(day=1)
     day_start = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
@@ -157,6 +170,29 @@ async def manager_dashboard(
         .limit(5)
     )
 
+    stage1_rows = await db.execute(
+        select(OverdueCase, Deal)
+        .join(Deal, OverdueCase.deal_id == Deal.id)
+        .where(Deal.manager_id == mid)
+        .where(OverdueCase.collection_stage == 1)
+        .where(OverdueCase.status != OverdueCaseStatus.closed)
+        .order_by(OverdueCase.days_overdue.desc())
+        .limit(10)
+    )
+    stage1_overdue_cases = [
+        Stage1OverdueBrief(
+            case_id=case.id,
+            deal_id=deal.id,
+            client_id=deal.client_id,
+            type=deal.type.value,
+            total=Decimal(str(deal.total)),
+            days_overdue=case.days_overdue,
+            total_debt=Decimal(str(case.total_debt)),
+            overdue_installments_count=case.overdue_installments_count,
+        )
+        for case, deal in stage1_rows.all()
+    ]
+
     def _deal_brief(d: Deal) -> DealBrief:
         return DealBrief(
             id=d.id,
@@ -178,6 +214,7 @@ async def manager_dashboard(
         schedules_today=schedules_today,
         schedules_week=schedules_week,
         overdue_deals_list=[_deal_brief(d) for d in overdue_list_rows.scalars().all()],
+        stage1_overdue_cases=stage1_overdue_cases,
     )
 
 

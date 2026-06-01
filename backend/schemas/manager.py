@@ -25,6 +25,17 @@ class DealBrief(BaseModel):
     total: Decimal
 
 
+class Stage1OverdueBrief(BaseModel):
+    case_id: uuid.UUID
+    deal_id: uuid.UUID
+    client_id: uuid.UUID
+    type: str
+    total: Decimal
+    days_overdue: int
+    total_debt: Decimal
+    overdue_installments_count: int
+
+
 class ManagerDashboardResponse(BaseModel):
     active_deals: int
     overdue_deals: int
@@ -37,6 +48,7 @@ class ManagerDashboardResponse(BaseModel):
     schedules_today: list[ScheduledPaymentBrief]
     schedules_week: list[ScheduledPaymentBrief]
     overdue_deals_list: list[DealBrief] = []
+    stage1_overdue_cases: list[Stage1OverdueBrief] = []
 
 
 class ManagerStatsResponse(BaseModel):

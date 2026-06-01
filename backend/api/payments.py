@@ -73,6 +73,11 @@ async def record_payment(
         ip=get_client_ip(request),
     )
     await refresh_overdue_case_after_payment(db, schedule.deal_id)
+    from backend.services.payment_commission_service import record_commission_splits_for_payments
+
+    await record_commission_splits_for_payments(
+        db, schedule.deal_id, [payment], actor_user_id=str(current_user.id)
+    )
     await db.commit()
     await db.refresh(payment)
     return PaymentResponse.model_validate(payment)
@@ -114,6 +119,11 @@ async def allocate_payment(
         ip=get_client_ip(request),
     )
     await refresh_overdue_case_after_payment(db, body.deal_id)
+    from backend.services.payment_commission_service import record_commission_splits_for_payments
+
+    await record_commission_splits_for_payments(
+        db, body.deal_id, payments, actor_user_id=str(current_user.id)
+    )
     await db.commit()
     for p in payments:
         await db.refresh(p)

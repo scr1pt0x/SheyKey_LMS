@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useDeal, useSubmitDeal } from "@/hooks/useDeals";
+import { useDeal, useSubmitDeal, downloadMurabahaDocx } from "@/hooks/useDeals";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DocumentsSection } from "@/components/features/shared/DocumentsSection";
@@ -14,9 +14,16 @@ import {
   DEAL_STATUS_LABELS,
   DEAL_STATUS_COLORS,
 } from "@/lib/utils";
+import {
+  MURABAHA_CATEGORY_LABELS,
+  MURABAHA_TARIFF_LABELS,
+  type MurabahaCategory,
+  type MurabahaTariffKey,
+} from "@/lib/murabaha";
 import { toast } from "@/hooks/useToast";
 import { getErrorMessage, isForbidden } from "@/lib/axios";
 import { ArrowLeft, Download } from "lucide-react";
+import { useState } from "react";
 
 const PAYABLE_STATUSES = new Set(["active", "overdue"]);
 
@@ -24,6 +31,7 @@ export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: deal, isLoading, isError, error, refetch } = useDeal(id);
   const submitDeal = useSubmitDeal();
+  const [docxLoading, setDocxLoading] = useState(false);
 
   if (isLoading) {
     return (
@@ -38,6 +46,7 @@ export default function DealDetailPage() {
   if (!deal) return <p className="text-center py-8">Сделка не найдена</p>;
 
   const canRecordPayments = PAYABLE_STATUSES.has(deal.status);
+  const murabahaParams = deal.params as Record<string, unknown> | null | undefined;
 
   return (
     <div className="space-y-5">
@@ -89,28 +98,62 @@ export default function DealDetailPage() {
               Оформить сделку
             </Button>
           )}
-          <a
-            href={`/api/documents/generate/schedule/${id}`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex-1 min-w-[calc(50%-4px)] sm:flex-none sm:min-w-0"
-          >
-            <Button size="sm" variant="outline" className="w-full">
-              <Download size={16} /> График PDF
+          {deal.type === "murabaha" && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={docxLoading}
+              onClick={async () => {
+                setDocxLoading(true);
+                try {
+                  await downloadMurabahaDocx(id);
+                  toast({ title: "Договор скачан" });
+                } catch (err) {
+                  toast({
+                    title: "Ошибка",
+                    description: getErrorMessage(err),
+                    variant: "destructive",
+                  });
+                } finally {
+                  setDocxLoading(false);
+                }
+              }}
+            >
+              <Download size={16} /> Скачать договор
             </Button>
-          </a>
-          <a
-            href={`/api/documents/generate/contract/${id}`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex-1 min-w-[calc(50%-4px)] sm:flex-none sm:min-w-0"
-          >
-            <Button size="sm" variant="outline" className="w-full">
-              <Download size={16} /> Договор
-            </Button>
-          </a>
+          )}
         </div>
       </div>
+
+      {deal.type === "murabaha" && murabahaParams?.product_category != null && (
+        <div className="bg-white rounded-xl border p-5 grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+          {murabahaParams.contract_number != null && (
+            <Info label="Номер договора">{String(murabahaParams.contract_number)}</Info>
+          )}
+          <Info label="Категория">
+            {MURABAHA_CATEGORY_LABELS[murabahaParams.product_category as MurabahaCategory] ??
+              String(murabahaParams.product_category)}
+          </Info>
+          {murabahaParams.tariff != null && (
+            <Info label="Тариф">
+              {MURABAHA_TARIFF_LABELS[murabahaParams.tariff as MurabahaTariffKey] ??
+                String(murabahaParams.tariff)}
+            </Info>
+          )}
+          {murabahaParams.down_payment_pct != null && (
+            <Info label="Первоначальный взнос">
+              {String(murabahaParams.down_payment_pct)}%
+              {murabahaParams.down_payment_amount != null &&
+                ` (${formatCurrency(String(murabahaParams.down_payment_amount))})`}
+            </Info>
+          )}
+          {murabahaParams.monthly_payment != null && (
+            <Info label="Ежемесячный платёж">
+              {formatCurrency(String(murabahaParams.monthly_payment))}
+            </Info>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
         <Info label="Основная сумма">{formatCurrency(deal.principal)}</Info>

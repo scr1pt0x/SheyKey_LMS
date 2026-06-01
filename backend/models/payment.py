@@ -101,3 +101,6 @@ class Payment(Base):
     recorded_by_user: Mapped["User"] = relationship(
         "User", foreign_keys=[recorded_by]
     )
+    commission_split: Mapped["PaymentCommissionSplit | None"] = relationship(
+        "PaymentCommissionSplit", back_populates="payment", uselist=False
+    )

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCreateDeal } from "@/hooks/useDeals";
@@ -15,8 +15,24 @@ import { DEAL_TYPE_LABELS } from "@/lib/utils";
 import { useClients } from "@/hooks/useClients";
 import { useStaffUsers } from "@/hooks/useDirector";
 import { useAuthStore } from "@/store/auth";
+import { MurabahaDealFields } from "@/components/features/manager/MurabahaDealFields";
 
 type DealType = "murabaha" | "ijara";
+
+function firstFormErrorMessage(errors: FieldErrors<DealCreateForm>): string | undefined {
+  const walk = (obj: Record<string, unknown>): string | undefined => {
+    for (const val of Object.values(obj)) {
+      if (!val || typeof val !== "object") continue;
+      if ("message" in val && typeof (val as { message?: unknown }).message === "string") {
+        return (val as { message: string }).message;
+      }
+      const nested = walk(val as Record<string, unknown>);
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+  return walk(errors as Record<string, unknown>);
+}
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
@@ -52,6 +68,20 @@ export default function NewDealPage() {
     defaultValues: {
       type: "murabaha",
       client_id: preselectedClientId,
+      murabaha: {
+        product_category: "consumer",
+        tariff: "ONE_GUARANTOR",
+        down_payment_pct: 20,
+        principal: "",
+        markup: "",
+        duration_months: 6,
+        start_date: "",
+        item_qty: 1,
+        payday: 1,
+        pledge: "Нет",
+        guarantor_name: "",
+        guarantor_phone: "",
+      },
     },
   });
 
@@ -72,10 +102,18 @@ export default function NewDealPage() {
 
     if (data.type === "murabaha" && data.murabaha) {
       payload.murabaha = {
+        product_category: data.murabaha.product_category,
+        tariff: data.murabaha.tariff,
+        down_payment_pct: data.murabaha.down_payment_pct,
         principal: data.murabaha.principal,
         markup: data.murabaha.markup,
         duration_months: data.murabaha.duration_months,
         start_date: data.murabaha.start_date,
+        item_qty: data.murabaha.item_qty,
+        payday: data.murabaha.payday,
+        pledge: data.murabaha.pledge,
+        guarantor_name: data.murabaha.guarantor_name?.trim() || undefined,
+        guarantor_phone: data.murabaha.guarantor_phone?.trim() || undefined,
       };
     } else if (data.type === "ijara" && data.ijara) {
       payload.ijara = data.ijara;
@@ -101,7 +139,13 @@ export default function NewDealPage() {
         <h1 className="text-xl font-bold">Новая сделка</h1>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="bg-white rounded-xl border p-6 space-y-5">
+      <form
+        onSubmit={handleSubmit(onSubmit, (invalid) => {
+          const msg = firstFormErrorMessage(invalid) ?? "Проверьте обязательные поля формы";
+          toast({ title: "Не удалось создать сделку", description: msg, variant: "destructive" });
+        })}
+        className="bg-white rounded-xl border p-6 space-y-5"
+      >
         {/* Client selector */}
         <Field label="Клиент *" error={errors.client_id?.message}>
           <select
@@ -165,20 +209,7 @@ export default function NewDealPage() {
 
         {/* Murabaha params */}
         {dealType === "murabaha" && (
-          <>
-            <Field label="Стоимость товара (₽) *" error={errors.murabaha?.principal?.message}>
-              <input {...register("murabaha.principal")} type="number" step="0.01" placeholder="500000" className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]" />
-            </Field>
-            <Field label="Наценка банка (₽) *" error={errors.murabaha?.markup?.message}>
-              <input {...register("murabaha.markup")} type="number" step="0.01" placeholder="75000" className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]" />
-            </Field>
-            <Field label="Срок (мес.) *" error={errors.murabaha?.duration_months?.message}>
-              <input {...register("murabaha.duration_months")} type="number" min="1" max="360" placeholder="24" className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]" />
-            </Field>
-            <Field label="Дата начала *" error={errors.murabaha?.start_date?.message}>
-              <input {...register("murabaha.start_date")} type="date" className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1a3a5c]" />
-            </Field>
-          </>
+          <MurabahaDealFields register={register} setValue={setValue} errors={errors} />
         )}
 
         {/* Ijara params */}

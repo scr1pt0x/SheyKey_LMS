@@ -470,7 +470,13 @@ async def import_deals(
 
             # Deal params
             if deal_type == DealType.murabaha:
-                params = {"principal": str(principal), "markup": str(markup), "duration_months": duration}
+                params = {
+                    "principal": str(principal),
+                    "markup": str(markup),
+                    "duration_months": duration,
+                    "down_payment_amount": "0",
+                    "payday": start_date.day,
+                }
             elif deal_type == DealType.ijara:
                 params = {"monthly_rent": str(monthly_rent or 0), "duration_months": duration,
                           "buyout_amount": str(buyout) if buyout else None}

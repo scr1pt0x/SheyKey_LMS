@@ -1,8 +1,6 @@
 """
-PDF generation service using WeasyPrint + Jinja2.
-Generates contracts, payment schedules, and reports.
+PDF generation service using WeasyPrint + Jinja2 (director reports).
 """
-import io
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -30,65 +28,6 @@ def _render_pdf(template_name: str, context: dict) -> bytes:
     template = _jinja_env.get_template(template_name)
     html_content = template.render(**context)
     return HTML(string=html_content).write_pdf()
-
-
-async def generate_contract_pdf(deal_id: str) -> bytes:
-    """Generate a deal contract PDF."""
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    from backend.models.deal import Deal
-    from backend.models.client import Client
-
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Deal)
-            .where(Deal.id == deal_id)
-            .options(selectinload(Deal.payment_schedules), selectinload(Deal.params), selectinload(Deal.client))
-        )
-        deal = result.scalar_one_or_none()
-        if not deal:
-            raise ValueError(f"Deal {deal_id} not found")
-
-        client = await db.get(Client, deal.client_id)
-
-    params = {p.key: p.value for p in deal.params}
-    template_name = f"contract_{deal.type.value}.html"
-
-    context = {
-        "deal": deal,
-        "client": client,
-        "params": params,
-        "schedules": sorted(deal.payment_schedules, key=lambda x: x.installment_number),
-    }
-    return _render_pdf(template_name, context)
-
-
-async def generate_schedule_pdf(deal_id: str) -> bytes:
-    """Generate a payment schedule PDF."""
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    from backend.models.deal import Deal
-    from backend.models.client import Client
-
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(Deal)
-            .where(Deal.id == deal_id)
-            .options(selectinload(Deal.payment_schedules))
-        )
-        deal = result.scalar_one_or_none()
-        if not deal:
-            raise ValueError(f"Deal {deal_id} not found")
-        client = await db.get(Client, deal.client_id)
-
-    context = {
-        "deal": deal,
-        "client": client,
-        "schedules": sorted(deal.payment_schedules, key=lambda x: x.installment_number),
-    }
-    return _render_pdf("payment_schedule.html", context)
 
 
 async def generate_portfolio_pdf() -> bytes:

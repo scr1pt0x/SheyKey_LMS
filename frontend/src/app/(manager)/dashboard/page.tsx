@@ -65,6 +65,28 @@ export default function ManagerDashboardPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Section title="Просрочка, этап 1" icon={<AlertTriangle size={18} className="text-amber-600" />}>
+          {!(data.stage1_overdue_cases?.length) ? (
+            <p className="text-sm text-gray-500">На первом этапе дел нет — взыскание ведёте вы</p>
+          ) : (
+            <ul className="space-y-2">
+              {data.stage1_overdue_cases.map((c) => (
+                <li key={c.case_id}>
+                  <Link
+                    href={`/deals/${c.deal_id}`}
+                    className="flex justify-between items-center hover:bg-gray-50 rounded-lg p-2 -mx-2"
+                  >
+                    <span className="text-sm">
+                      {DEAL_TYPE_LABELS[c.type]} · {c.days_overdue} дн. · {c.overdue_installments_count} плат.
+                    </span>
+                    <span className="text-sm text-red-600 font-semibold">{formatCurrency(c.total_debt)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
         <Section title="Моя просрочка" icon={<AlertTriangle size={18} className="text-red-500" />}>
           {data.overdue_deals_list.length === 0 ? (
             <p className="text-sm text-gray-500">Просроченных сделок нет</p>

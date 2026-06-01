@@ -36,7 +36,7 @@ migrate-down:
 	$(EXPORT_PATH) $(VENV) $(PYTHONPATH_EXPORT) export DATABASE_URL=$(DB_URL) && cd backend && alembic downgrade -1
 
 seed:
-	$(EXPORT_PATH) $(VENV) $(PYTHONPATH_EXPORT) export DATABASE_URL=$(DB_URL) && cd backend && python3 -m backend.scripts.seed
+	$(EXPORT_PATH) $(VENV) $(PYTHONPATH_EXPORT) set -a && [ -f backend/.env ] && . backend/.env; set +a && export DATABASE_URL=$${DATABASE_URL:-$(DB_URL)} && cd backend && python3 -m backend.scripts.seed
 
 # ─── Install ──────────────────────────────────────────────────────────────────
 

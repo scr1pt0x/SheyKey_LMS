@@ -1,10 +1,13 @@
 "use client";
 
+import { useSbDashboard, useSbTodayWork, type SbTodayWorkItem } from "@/hooks/useSb";
+import {
+  formatCurrency,
+  formatDateTime,
+  SB_STAGE_EMPTY_HINT,
+  sbStageBannerTitle,
+} from "@/lib/utils";
 import Link from "next/link";
-import { useSbDashboard, useSbTodayWork, useTakeCase, type SbTodayWorkItem } from "@/hooks/useSb";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { toast } from "@/hooks/useToast";
 import {
   BarChart,
   Bar,
@@ -19,7 +22,6 @@ import { AlertTriangle, CheckCircle, Clock, TrendingUp } from "lucide-react";
 export default function SbDashboardPage() {
   const { data, isLoading } = useSbDashboard();
   const { data: todayWork } = useSbTodayWork();
-  const takeCase = useTakeCase();
 
   if (isLoading) {
     return (
@@ -41,16 +43,36 @@ export default function SbDashboardPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Мой дашборд — Служба Безопасности</h1>
 
-      {data.unassigned_cases_total > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between gap-3">
-          <p className="text-orange-800 font-medium text-sm">
-            В общей очереди: {data.unassigned_cases_total} неназначенных дел
-          </p>
-          <Link
-            href="/sb/cases?unassigned=1"
-            className="text-sm font-semibold text-[#1a3a5c] hover:underline shrink-0"
-          >
-            Перейти →
+      {data.assigned_collection_stage != null && (
+        <div className="bg-white rounded-xl border p-4">
+          <h2 className="font-semibold text-sm flex items-center gap-2 mb-2">
+            <AlertTriangle size={18} className="text-amber-600" />
+            {sbStageBannerTitle(data.assigned_collection_stage)}
+          </h2>
+          {!data.stage_open_cases?.length ? (
+            <p className="text-sm text-gray-500">
+              {SB_STAGE_EMPTY_HINT[data.assigned_collection_stage] ??
+                "На вашем этапе дел пока нет — они появятся при эскалации просрочки."}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {data.stage_open_cases.map((c) => (
+                <li key={c.case_id}>
+                  <Link
+                    href={`/sb/cases/${c.case_id}`}
+                    className="flex justify-between items-center hover:bg-gray-50 rounded-lg p-2 -mx-2"
+                  >
+                    <span className="text-sm">
+                      {c.client_name ?? "Клиент"} · {c.days_overdue} дн. · {c.overdue_installments_count} плат.
+                    </span>
+                    <span className="text-sm text-red-600 font-semibold">{formatCurrency(c.total_debt)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link href="/sb/cases" className="text-xs text-[#1a3a5c] hover:underline mt-2 inline-block">
+            Все мои дела →
           </Link>
         </div>
       )}
@@ -101,32 +123,6 @@ export default function SbDashboardPage() {
             emptyText="Нет просроченных обещаний"
             variant="red"
           />
-          {todayWork.unassigned_top.length > 0 && (
-            <div className="bg-white rounded-xl border p-4">
-              <h3 className="font-medium text-sm mb-3">Неназначенные (очередь)</h3>
-              <ul className="space-y-2">
-                {todayWork.unassigned_top.map((item) => (
-                  <li key={item.case_id} className="flex items-center justify-between gap-2">
-                    <Link href={`/sb/cases/${item.case_id}`} className="text-sm hover:underline flex-1">
-                      Долг {formatCurrency(item.total_debt)} · {item.days_overdue} дн.
-                    </Link>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      loading={takeCase.isPending}
-                      onClick={() =>
-                        takeCase.mutate(item.case_id, {
-                          onSuccess: () => toast({ title: "Дело взято в работу" }),
-                        })
-                      }
-                    >
-                      Взять
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
 

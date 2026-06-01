@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, SmallInteger, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +49,9 @@ class OverdueCase(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_debt: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, default=0)
     days_overdue: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    collection_stage: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1, index=True)
+    overdue_installments_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stage_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

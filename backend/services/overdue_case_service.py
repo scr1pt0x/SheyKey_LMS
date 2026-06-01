@@ -114,10 +114,12 @@ async def sync_overdue_case_for_deal(
     elif deal.status not in (DealStatus.overdue, DealStatus.closed):
         deal.status = DealStatus.overdue
 
+    from backend.services.debt_collection_stage_service import apply_collection_stage
+
     if existing:
         existing.days_overdue = days_overdue
         existing.total_debt = total_debt
-        await db.flush()
+        await apply_collection_stage(db, existing, deal, today=today)
         return existing, False
 
     case = OverdueCase(
@@ -125,9 +127,12 @@ async def sync_overdue_case_for_deal(
         days_overdue=days_overdue,
         total_debt=total_debt,
         status=OverdueCaseStatus.new,
+        collection_stage=1,
+        overdue_installments_count=len(sb_debt_lines),
     )
     db.add(case)
     await db.flush()
+    await apply_collection_stage(db, case, deal, today=today)
     return case, True
 
 
