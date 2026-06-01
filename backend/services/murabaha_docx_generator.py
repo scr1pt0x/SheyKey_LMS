@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import copy
-import subprocess
 from typing import Optional, Tuple
 
 from docx import Document
@@ -459,23 +458,6 @@ def fill_placeholders(
     _replace_in_document(doc, replacements, preferred_font=preferred_font)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
-
-
-def convert_docx_to_pdf(docx_path: Path) -> Path:
-    """
-    Конвертация DOCX → PDF через LibreOffice (headless).
-    Сейчас НЕ используется (PDF отключён), но оставлено для будущего.
-    """
-    out_dir = docx_path.parent
-    cmd = [
-        "soffice",
-        "--headless",
-        "--convert-to", "pdf",
-        "--outdir", str(out_dir),
-        str(docx_path),
-    ]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return docx_path.with_suffix(".pdf")
 
 
 # noinspection SpellCheckingInspection,PyPep8Naming

@@ -13,7 +13,7 @@
 | Хранилище | MinIO (S3-совместимый самохостинг) |
 | Уведомления | SMS.ru · Web Push · SMTP |
 | Документы | WeasyPrint · openpyxl |
-| Прод | Docker Compose · Nginx · reg.ru VPS · GitHub Actions |
+| Прод | Docker Compose · Nginx · reg.ru VPS |
 
 ## Быстрый старт (локально)
 
@@ -87,8 +87,7 @@ SheyKey_LMS/
 ├── backend/           FastAPI + SQLAlchemy + Celery
 ├── frontend/          Next.js 14 PWA
 ├── infra/             Docker Compose (прод) + Nginx
-├── migration/         Импорт из Google Sheets
-└── .github/workflows/ CI/CD на reg.ru VPS
+└── migration/         Импорт из Google Sheets
 ```
 
 ## Тесты
@@ -114,12 +113,14 @@ make migration-verify     # Проверить
 
 ## Продакшн (reg.ru)
 
-Добавь в GitHub → Settings → Secrets:
-- `VPS_HOST` — IP сервера
-- `VPS_USER` — логин (обычно `root`)
-- `VPS_SSH_KEY` — приватный SSH-ключ
+Деплой вручную на сервере (автодеплой из GitHub отключён):
 
-После этого `git push origin main` автоматически деплоит новую версию на сервер.
+```bash
+cd /srv/lms
+git pull origin main
+docker compose -f infra/docker-compose.yml up -d --build
+docker compose -f infra/docker-compose.yml exec -T api alembic upgrade head
+```
 
 ## Лицензия
 
